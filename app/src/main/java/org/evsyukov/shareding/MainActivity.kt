@@ -1,8 +1,6 @@
 package org.evsyukov.shareding
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.Network
 import android.os.Bundle
 import android.text.format.DateUtils
 import android.widget.Toast
@@ -91,17 +89,10 @@ import org.evsyukov.shareding.data.Settings
 import org.evsyukov.shareding.network.TitleFetcher
 import org.evsyukov.shareding.network.TagNames
 import org.evsyukov.shareding.network.Urls
-import org.evsyukov.shareding.sync.NetworkRequests
 
 class MainActivity : ComponentActivity() {
     private val container get() = (application as ShareDingApplication).container
-    private val connectivity by lazy { getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager }
-    @Volatile private var networksAtRegistration: Set<Network> = emptySet()
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            if (network !in networksAtRegistration) container.scheduler.enqueue(urgent = true)
-        }
-    }
+    private var stopWatchingNetworks: (() -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,12 +112,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        networksAtRegistration = connectivity.allNetworks.toSet()
-        connectivity.registerNetworkCallback(NetworkRequests.anyConnected(), networkCallback)
+        stopWatchingNetworks = container.networkTracker.subscribe {
+            container.scheduler.enqueue(urgent = true)
+        }
     }
 
     override fun onStop() {
-        connectivity.unregisterNetworkCallback(networkCallback)
+        stopWatchingNetworks?.invoke()
+        stopWatchingNetworks = null
         super.onStop()
     }
 

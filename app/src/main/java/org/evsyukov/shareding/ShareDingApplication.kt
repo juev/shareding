@@ -6,6 +6,7 @@ import org.evsyukov.shareding.data.AppDatabase
 import org.evsyukov.shareding.data.SettingsStore
 import org.evsyukov.shareding.network.LinkdingApi
 import org.evsyukov.shareding.network.NetworkSelector
+import org.evsyukov.shareding.network.NetworkTracker
 import org.evsyukov.shareding.sync.SyncScheduler
 
 class ShareDingApplication : Application() {
@@ -23,6 +24,7 @@ class AppContainer(application: Application) {
     val db: AppDatabase = Room.databaseBuilder(application, AppDatabase::class.java, "bookmarks.db").build()
     val settings = SettingsStore(application)
     val api = LinkdingApi()
-    val networkSelector = NetworkSelector(application, api)
+    val networkTracker = NetworkTracker(application)
+    val networkSelector = NetworkSelector(networkTracker, api)
     val scheduler = SyncScheduler(application)
 }
