@@ -1,0 +1,1 @@
+Remove dependency metadata from the signed APK for F-Droid compatibility. App behavior is unchanged.
