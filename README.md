@@ -45,6 +45,8 @@ ShareDing is written in Kotlin. Jetpack Compose provides the interface, Room sto
 
 For automatic update checks, use [Obtainium](https://github.com/ImranR98/Obtainium). Add `https://github.com/juev/shareding` as a source and enable **Include prereleases** to receive test builds. Install the APK from the release it finds.
 
+If Obtainium reports `Could not find a suitable release` while adding the repository, download the APK directly from [Releases](https://github.com/juev/shareding/releases). Obtainium has a [reported issue](https://github.com/ImranR98/Obtainium/issues/3346) with repositories that contain only prereleases, even when **Include prereleases** is enabled.
+
 For manual installation, open [Releases](https://github.com/juev/shareding/releases) on your phone, download the latest APK, and confirm the installation. If Android asks for permission to install apps from this source, grant it to your browser or file manager. To update, download the newer APK and install it over the current version.
 
 You can also install the downloaded APK over USB with `adb install -r /path/to/downloaded.apk`. All methods require Android 9 or newer. Release APKs use the same signing key, which Android requires for updates. Debug APKs use a different key. If you already installed a debug build, uninstall it before installing the release build. Uninstalling deletes its settings and local queue.
