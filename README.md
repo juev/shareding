@@ -1,28 +1,28 @@
-# ShareDing для Android
+# ShareDing for Android
 
-ShareDing сохраняет ссылки из меню «Поделиться» в локальной очереди и отправляет их в [linkding](https://github.com/sissbruecker/linkding). Приложение написано на Kotlin. Интерфейс использует Jetpack Compose, очередь хранится в Room, фоновую отправку запускает WorkManager. Минимальная версия — Android 9 (API 28).
+ShareDing saves links from Android's Share menu to a local queue and sends them to [linkding](https://github.com/sissbruecker/linkding). It is written in Kotlin, with a Jetpack Compose interface, Room queue, and WorkManager background sync. It requires Android 9 (API 28) or newer.
 
-## Использование
+## Use
 
-1. В Settings укажите адрес linkding и API token. Адрес может начинаться с `https://` или `http://`.
-2. Поделитесь ссылкой из браузера с ShareDing или добавьте её через кнопку `+` в Queue.
-3. Ссылка попадает в очередь до сетевого запроса. Когда сеть доступна, приложение проверяет linkding и отправляет закладки. После успешного ответа запись удаляется из очереди.
+1. Enter your linkding server URL and API token in Settings. The URL may use `https://` or `http://`.
+2. Share a link from a browser to ShareDing, or add one with the `+` button in Queue.
+3. ShareDing saves the link before making a network request. When a network is available, it checks the linkding server and sends queued bookmarks. It removes a bookmark from the queue only after a successful response.
 
-При ошибке ссылка остаётся в очереди. WorkManager повторяет отправку с exponential backoff от 30 секунд; Android может запустить работу позже. Новая ссылка, кнопка Retry/Sync Now и сохранение настроек инициируют раннюю попытку. Сервер в LAN или VPN может работать без доступа к публичному интернету. HTTP допускается, но настройки предупреждают о передаче API token и содержимого запроса без TLS.
+Failed sends stay in the queue. WorkManager retries with exponential backoff starting at 30 seconds; Android may run the work later. Adding another link, using Retry or Sync Now, and saving settings can trigger an earlier attempt. The linkding server may be reachable through a LAN or VPN without public internet access. HTTP is supported, but Settings warns that it sends the API token and request data without TLS.
 
-В Queue запись можно удалить вручную после подтверждения. Если ответ сервера потеряется после успешного POST, отправка может повториться; linkding обновляет существующую закладку с тем же URL.
+You can remove a queued bookmark manually after confirming the action. If the server accepts a POST but its response is lost, ShareDing may send the bookmark again; linkding updates an existing bookmark with the same URL.
 
-## Установка и обновления
+## Install and update
 
-Для обычного использования рекомендуем [Obtainium](https://github.com/ImranR98/Obtainium): он устанавливает APK из GitHub Releases и проверяет новые версии. Добавьте в Obtainium адрес `https://github.com/juev/shareding` и включите **Include prereleases**, пока доступна только предварительная версия. Установите APK `ShareDing-v0.1.0-rc.1.apk` из найденного релиза.
+For automatic update checks, use [Obtainium](https://github.com/ImranR98/Obtainium). Add `https://github.com/juev/shareding` as a source and enable **Include prereleases** while only prerelease versions are available. Install `ShareDing-v0.1.0-rc.1.apk` from the release it finds.
 
-Без Obtainium откройте [Releases](https://github.com/juev/shareding/releases) на телефоне, скачайте APK последней версии и подтвердите установку. Если Android запросит разрешение на установку из этого источника, выдайте его браузеру или файловому менеджеру. Для обновления скачайте новый APK и установите поверх предыдущей версии.
+For manual installation, open [Releases](https://github.com/juev/shareding/releases) on your phone, download the latest APK, and confirm the installation. If Android asks for permission to install apps from this source, grant it to your browser or file manager. To update, download the newer APK and install it over the current version.
 
-Через USB можно установить тот же APK командой `adb install -r ShareDing-v0.1.0-rc.1.apk`. Во всех вариантах нужен Android 9 или новее. APK из Releases подписаны одним ключом; для установки обновлений требуется та же подпись. Отладочный APK подписан другим ключом. Если вы уже установили отладочную сборку, перед установкой релиза удалите её: при удалении сотрутся настройки и ссылки в локальной очереди.
+You can also install the same APK over USB with `adb install -r ShareDing-v0.1.0-rc.1.apk`. All methods require Android 9 or newer. Release APKs use the same signing key, which Android requires for updates. Debug APKs use a different key. If you already installed a debug build, uninstall it before installing the release build. Uninstalling deletes its settings and local queue.
 
-## Сборка
+## Build
 
-Нужны JDK 17 или новее и Android SDK Platform 36 с Build Tools 36.0.0. Укажите путь к SDK через `ANDROID_HOME` или `local.properties` (`sdk.dir=...`).
+Install JDK 17 or newer, Android SDK Platform 36, and Build Tools 36.0.0. Set the SDK path with `ANDROID_HOME` or `local.properties` (`sdk.dir=...`).
 
 ```sh
 ./gradlew assembleDebug
@@ -31,10 +31,10 @@ ShareDing сохраняет ссылки из меню «Поделиться»
 ./gradlew connectedDebugAndroidTest
 ```
 
-Для последней команды нужен запущенный emulator или подключённое устройство. Отладочный APK находится в `app/build/outputs/apk/debug/app-debug.apk`; его можно установить командой `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
+The last command requires a running emulator or connected device. The debug APK is at `app/build/outputs/apk/debug/app-debug.apk`; install it with `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
 
-CI запускает сборку, unit tests и lint для `main` и pull requests. Подписанный APK для Releases собирается локально на macOS командой `./scripts/build-release-macos.sh`. Скрипт использует ключ из `$HOME/.local/share/shareding/release.jks` и пароль из macOS Keychain (service `org.evsyukov.shareding.release`, account `shareding`). Вместо них можно указать `SHAREDING_RELEASE_KEYSTORE` и `SHAREDING_RELEASE_PASSWORD`. Ключ и запись Keychain нужно сохранить в надёжной резервной копии: без них последующие версии нельзя установить как обновление.
+CI builds the app and runs unit tests and lint for pushes to `main` and pull requests. Build a signed release APK locally on macOS with `./scripts/build-release-macos.sh`. The script reads the key from `$HOME/.local/share/shareding/release.jks` and its password from macOS Keychain (service `org.evsyukov.shareding.release`, account `shareding`). Set `SHAREDING_RELEASE_KEYSTORE` and `SHAREDING_RELEASE_PASSWORD` to use other locations. Back up both the key and Keychain password securely: without them, future APKs cannot update existing installations.
 
-Для каждого нового релиза увеличивайте `versionCode` и обновляйте `versionName` в `app/build.gradle.kts`. Подписанный файл будет в `app/build/outputs/apk/release/app-release.apk`. Правило сохранения ключа подписи описано в [Android App Signing](https://developer.android.com/studio/publish/app-signing).
+For each new release, increment `versionCode` and update `versionName` in `app/build.gradle.kts`. The signed APK is written to `app/build/outputs/apk/release/app-release.apk`. See [Android App Signing](https://developer.android.com/studio/publish/app-signing) for the signing key requirement.
 
-Контракт поведения описан в [спецификации](docs/specs/share-to-linkding.md).
+The behavior contract is in the [specification](docs/specs/share-to-linkding.md).

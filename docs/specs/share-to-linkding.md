@@ -1,44 +1,45 @@
-# Отправка ссылок в linkding на Android
+# Sending links to linkding on Android
 
-Состояние: реализовано. Проверены сборка, unit-, UI- и instrumentation-тесты на Android 9 и Android 16. Реальные VPN и HTTPS-сервер с доверенным сертификатом вручную не проверялись.
-Источники: запрос пользователя, согласованный RFC и поведение iOS-приложения в соседнем репозитории `share`.
+Status: implemented. Build, unit, UI, and instrumentation tests passed on Android 9 and Android 16. A real VPN and an HTTPS server with a trusted certificate have not been tested manually.
 
-## Назначение и границы
+Sources: the user's requirements, the agreed RFC, and the iOS app in the sibling `share` repository.
 
-Приложение принимает ссылку из системного меню Android или через форму добавления, сохраняет её на устройстве и отправляет в настроенный linkding. Сохранение не зависит от доступности сети или наличия настроек сервера. Поддерживаются Android 9 (API 28) и новее.
+## Purpose and scope
 
-## Требования
+The app accepts a link from Android's Share menu or its add form, saves it on the device, and sends it to the configured linkding server. Saving does not depend on network availability or server settings. Android 9 (API 28) and newer are supported.
 
-- R1. Принимать HTTP(S) URL из `ACTION_SEND` и сохранять запись в локальной базе до сетевого запроса. Сообщение `Saved` означает успешную локальную запись. Неверный URL или ошибка базы не показывают `Saved`.
-- R2. Отправлять записи при появлении сети. Сервер может находиться в LAN или VPN без доступа к публичному интернету. Проверка `NET_CAPABILITY_VALIDATED` не должна блокировать такой сервер. Перед отправкой проверять доступность linkding запросом к его API.
-- R3. После timeout, HTTP error, ошибки соединения или перезапуска сохранять неотправленную запись и продолжать попытки без лимита. WorkManager использует exponential backoff с начальной задержкой 30 секунд; Android может запустить работу позже. Успешный ответ `POST /api/bookmarks/` удаляет только отправленную запись.
-- R4. Давать пользователю добавлять URL вручную с title, description и tags. Подставлять title страницы, когда его удалось получить. Настройки включают server URL, API token, default tags, unread/archive, Test Connection, Sync Now, время последней успешной отправки и число записей в очереди. Очередь показывает статусы, ручной Retry, обновление и пустое состояние.
-- R5. Сохранить две вкладки Queue/Settings, форму Add Bookmark, иконку и короткое подтверждение по образцу iOS. Использовать нативные элементы Android, Light/Dark и доступные подписи для скринридера.
-- R6. Crash, остановка фоновой задачи и перезагрузка не теряют записи. Одновременное добавление и ручная синхронизация не должны удалять запись без подтверждённой отправки. Повторный URL в очереди не меняет данные записи во время отправки.
-- R7. Ручное удаление одной записи допускается только после подтверждения пользователя. Отмена подтверждения сохраняет запись.
-- R8. `minSdk` равен 28. Проверка охватывает Android 9 и актуальную версию Android.
-- R9. Server URL принимает `https://` и `http://`. При HTTP настройки показывают, что API token и запрос передаются без TLS. HTTPS использует обычную проверку сертификата; token не отправляется на другой origin при redirect.
+## Requirements
 
-## Инварианты и совместимость
+- R1. Accept HTTP(S) URLs from `ACTION_SEND` and save each entry to the local database before making a network request. Show `Saved` only after a successful local write. Do not show it for an invalid URL or database error.
+- R2. Send queued entries when a network becomes available. The server may be on a LAN or VPN without public internet access. `NET_CAPABILITY_VALIDATED` must not block such servers. Check linkding availability with an API request before sending.
+- R3. Keep unsent entries after a timeout, HTTP error, connection error, or restart, and keep retrying without a fixed limit. WorkManager uses exponential backoff starting at 30 seconds; Android may run the work later. A successful `POST /api/bookmarks/` removes only the entry that was sent.
+- R4. Let users add a URL manually with title, description, and tags. Fill in the page title when it can be retrieved. Settings include the server URL, API token, default tags, unread/archive options, Test Connection, Sync Now, last successful sync time, and queue count. The queue shows statuses, manual Retry, refresh, and an empty state.
+- R5. Keep the two Queue/Settings tabs, Add Bookmark form, icon, and brief confirmation from the iOS design. Use native Android controls, Light/Dark themes, and screen reader labels.
+- R6. Crashes, stopped background work, and reboots must not lose entries. Concurrent additions and manual sync must not remove an entry without confirmed delivery. Adding a duplicate URL must not change an entry while it is being sent.
+- R7. Allow manual removal of one entry only after user confirmation. Canceling the confirmation keeps the entry.
+- R8. Set `minSdk` to 28. Verify behavior on Android 9 and a current Android version.
+- R9. Accept `https://` and `http://` server URLs. For HTTP, show that the API token and request are sent without TLS. HTTPS uses normal certificate validation; redirects to another origin must not receive the token.
 
-- Локальная запись предшествует постановке фоновой работы и сетевому запросу.
-- Автоматическое удаление происходит только после подтверждённого успеха API. Ручное удаление — отдельное действие пользователя.
-- Сетевая отправка имеет семантику at-least-once. Если сервер принял POST, а ответ потерялся, запрос может повториться. Текущий linkding обновляет существующую закладку с тем же URL.
-- Отсутствие server URL или token не мешает локальному сохранению. После настройки приложения очередь остаётся доступной для отправки.
-- URL сохраняемой страницы может быть HTTP или HTTPS независимо от протокола сервера linkding.
+## Invariants and compatibility
 
-## Принятые решения
+- A local write happens before background work is scheduled or a network request is made.
+- Automatic removal happens only after confirmed API success. Manual removal is a separate user action.
+- Delivery has at-least-once semantics. If the server accepts a POST but the response is lost, the request may be repeated. Current linkding updates an existing bookmark with the same URL.
+- Missing server URL or token does not prevent local saving. The queue remains available for delivery after setup.
+- A saved page URL may use HTTP or HTTPS regardless of the linkding server URL scheme.
 
-Kotlin и Jetpack Compose отвечают за Android UI; Room хранит очередь; WorkManager запускает устойчивую фоновую отправку с сетевым условием и повторными попытками. Сетевой `NetworkRequest` требует capability `INTERNET`, но не `VALIDATED` или `NOT_VPN`: Wi-Fi без проверки публичного интернета и VPN остаются кандидатами. Worker читает очередь из Room по времени создания, перебирает доступные сети и проверяет фактическую доступность linkding через `GET /api/tags/`. API token хранится отдельно от очереди с защитой Android Keystore. Для произвольного адреса сервера Android Network Security Config разрешает HTTP; приложение отправляет token только на настроенный origin.
+## Design decisions
 
-## Проверочные сценарии
+Kotlin and Jetpack Compose provide the Android UI; Room stores the queue; WorkManager runs durable background sync with a network constraint and retries. Its `NetworkRequest` requires the `INTERNET` capability, but not `VALIDATED` or `NOT_VPN`: Wi-Fi without public internet validation and VPN remain candidates. The worker reads Room entries in creation order, tries available networks, and checks linkding through `GET /api/tags/`. The API token is stored separately from the queue using Android Keystore protection. Android Network Security Config allows HTTP for arbitrary server addresses; the app sends the token only to the configured origin.
 
-- R1, R2: без сети и настроек поделиться URL → запись появляется в очереди; после восстановления сети и настройки linkding отправляется.
-- R3, R6: API отвечает 401/5xx, соединение обрывается или worker останавливается → запись остаётся; после успешного POST удаляется. Новая ссылка во время backoff запускает раннюю попытку.
-- R2, R9: linkding по HTTP и HTTPS доступен только через LAN/VPN → отправка проходит без требования публичного интернета; HTTP показывает предупреждение.
-- R4, R5: форма добавления, Queue и Settings выполняют действия и показывают согласованные состояния в Light/Dark.
-- R7: отменить удаление → запись остаётся; подтвердить → удаляется только выбранная запись.
+## Verification scenarios
 
-Автоматические проверки: `./gradlew assembleDebug assembleRelease testDebugUnitTest lintDebug connectedDebugAndroidTest`. Сценарии URL и API покрывают `app/src/test/java/org/evsyukov/shareding/network/`; очередь Room, Share Intent, worker, планировщик и UI — `app/src/androidTest/java/org/evsyukov/shareding/`.
+- R1, R2: Share a URL without a network or server settings. The entry appears in the queue and is sent after network access and server settings become available.
+- R3, R6: Return 401/5xx from the API, drop the connection, or stop the worker. The entry remains queued and is removed only after a successful POST. A new link during backoff starts an earlier attempt.
+- R2, R9: Reach a linkding server using HTTP or HTTPS only through LAN/VPN. Delivery works without public internet validation; HTTP shows a warning.
+- R4, R5: The add form, Queue, and Settings perform their actions and show the agreed states in Light/Dark themes.
+- R7: Cancel removal and keep the entry; confirm removal and delete only the selected entry.
 
-Ручная проверка сетевых сценариев: на Android 9 отключить Wi-Fi и мобильные данные, поделиться URL, закрыть приложение, включить Wi-Fi и проверить поступление POST на тестовый сервер и опустевшую очередь. Для проверки LAN без публичного интернета отключить проверку доступности публичного интернета на emulator, убедиться в отсутствии `NET_CAPABILITY_VALIDATED` и повторить отправку на доступный linkding. Для проверки backoff тестовый сервер должен ответить 503 на первый POST и 201 на следующий; запись остаётся в очереди до второго ответа.
+Automated checks: `./gradlew assembleDebug assembleRelease testDebugUnitTest lintDebug connectedDebugAndroidTest`. URL and API cases are covered in `app/src/test/java/org/evsyukov/shareding/network/`; Room queue, Share Intent, worker, scheduler, and UI cases are covered in `app/src/androidTest/java/org/evsyukov/shareding/`.
+
+Manual network checks: On Android 9, turn off Wi-Fi and mobile data, share a URL, close the app, turn Wi-Fi on, then confirm the POST reaches a test server and the queue empties. To check LAN access without public internet, disable public internet validation in the emulator, confirm that `NET_CAPABILITY_VALIDATED` is absent, and send to a reachable linkding server. To check backoff, make the test server return 503 for the first POST and 201 for the next; the entry must remain queued until the second response.
