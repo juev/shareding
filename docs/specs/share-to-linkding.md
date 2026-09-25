@@ -10,11 +10,11 @@ The app accepts a link from Android's Share menu or its add form, saves it on th
 
 ## Requirements
 
-- R1. Accept HTTP(S) URLs from `ACTION_SEND` and save each entry to the local database before making a network request. Show `Saved to queue` only after a successful local write. Do not show it for an invalid URL or database error.
+- R1. Register as a `text/plain` `ACTION_SEND` target. Accept HTTP(S) URLs and save each entry to the local database before making a network request. Keep the sending app visible through a transparent Share activity, show a short `Saved to queue` Toast only after a successful local write, and then finish. Show distinct feedback for invalid URLs, duplicates, or local save errors.
 - R2. Send queued entries when a network becomes available. The server may be on a LAN or VPN without public internet access. `NET_CAPABILITY_VALIDATED` must not block such servers. Check linkding availability with an API request before sending.
 - R3. Keep unsent entries after a timeout, HTTP error, connection error, or restart, and keep retrying without a fixed limit. WorkManager uses exponential backoff starting at 30 seconds; Android may run the work later. A successful `POST /api/bookmarks/` removes only the entry that was sent.
 - R4. Let users add a URL manually with title, description, and tags. Fill in the page title when it can be retrieved. Settings include the server URL, API token, default tags, unread/archive options, Test Connection, Sync Now, last successful sync time, and queue count. Keep the connection result visible until the server URL or token changes. The queue shows status chips, Retry for failed entries, refresh, and an empty state with an Add bookmark action.
-- R5. Keep the two Queue/Settings tabs, full-screen Add Bookmark form, icon, and brief confirmation from the iOS design. About shows the installed version and links to the developer's website as on iOS, plus the Android source repository. Use native Android controls, Light/Dark themes, and screen reader labels.
+- R5. Keep the two Queue/Settings tabs, full-screen Add Bookmark form, icon, and brief Share confirmation from the iOS design. About shows the installed version and compact rows linking to the developer's website as on iOS and the Android source repository. Use native Android controls, Light/Dark themes, and screen reader labels.
 - R6. Crashes, stopped background work, and reboots must not lose entries. Concurrent additions and manual sync must not remove an entry without confirmed delivery. Adding a duplicate URL must not change an entry while it is being sent.
 - R7. Allow manual removal of one entry only after user confirmation. Canceling the confirmation keeps the entry.
 - R8. Set `minSdk` to 28. Verify behavior on Android 9 and a current Android version.
@@ -34,7 +34,7 @@ Kotlin and Jetpack Compose provide the Android UI; Room stores the queue; WorkMa
 
 ## Verification scenarios
 
-- R1, R2: Share a URL without a network or server settings. The entry appears in the queue and is sent after network access and server settings become available.
+- R1, R2: Share a URL without a network or server settings. ShareDing appears in the text Share menu, keeps the sending app visible, saves the entry, shows a short Toast, and sends it after network access and server settings become available. Sharing invalid text leaves the queue unchanged.
 - R3, R6: Return 401/5xx from the API, drop the connection, or stop the worker. The entry remains queued and is removed only after a successful POST. A new link during backoff starts an earlier attempt.
 - R2, R9: Reach a linkding server using HTTP or HTTPS only through LAN/VPN. Delivery works without public internet validation; HTTP shows a warning.
 - R4, R5: The add form, Queue, and Settings perform their actions and show the agreed states in Light/Dark themes.

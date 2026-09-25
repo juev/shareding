@@ -1,17 +1,14 @@
 package org.evsyukov.shareding
 
 import android.content.Context
-import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Bundle
 import android.text.format.DateUtils
-import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -22,12 +19,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
@@ -71,12 +70,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.lifecycleScope
 import androidx.core.view.WindowCompat
-import androidx.core.content.IntentCompat
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.Dispatchers
@@ -93,7 +89,6 @@ import org.evsyukov.shareding.sync.NetworkRequests
 
 class MainActivity : ComponentActivity() {
     private val container get() = (application as ShareDingApplication).container
-    private var shareMessage by mutableStateOf<String?>(null)
     private val connectivity by lazy { getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager }
     @Volatile private var networksAtRegistration: Set<Network> = emptySet()
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -113,18 +108,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
             ShareDingTheme {
-                val message = shareMessage
-                if (message != null) ShareConfirmation(message)
-                else ShareDingScreen(container)
+                ShareDingScreen(container)
             }
         }
-        if (intent?.action == Intent.ACTION_SEND && savedInstanceState == null) handleShare(intent)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        if (intent.action == Intent.ACTION_SEND) handleShare(intent)
     }
 
     override fun onStart() {
@@ -138,46 +124,6 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 
-    private fun handleShare(intent: Intent) {
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT)
-            ?: IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, android.net.Uri::class.java)
-                ?.toString().orEmpty()
-        val title = intent.getStringExtra(Intent.EXTRA_TITLE)
-            ?: intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()
-        val url = Urls.sharedText(text)
-        if (url == null) {
-            shareMessage = "No valid HTTP(S) URL"
-            lifecycleScope.launch { kotlinx.coroutines.delay(1400); finish() }
-            return
-        }
-        lifecycleScope.launch {
-            try {
-                val defaults = container.settings.state.value
-                val id = withContext(Dispatchers.IO) {
-                    container.db.bookmarks().insert(Bookmark(url = url, title = title, tags = defaults.defaultTags,
-                        unread = defaults.unread, archived = defaults.archived))
-                }
-                shareMessage = if (id == -1L) "Already in queue" else "Saved to queue"
-                if (id != -1L) window.decorView.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                runCatching { container.scheduler.enqueue(urgent = true) }
-            } catch (error: Exception) {
-                shareMessage = "Cannot save: ${error.message}"
-            }
-            kotlinx.coroutines.delay(1000)
-            finish()
-        }
-    }
-}
-
-@Composable
-private fun ShareConfirmation(message: String) {
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally) {
-        Image(painterResource(R.mipmap.ic_launcher), contentDescription = null,
-            modifier = Modifier.size(96.dp))
-        Spacer(Modifier.height(16.dp))
-        Text(message, style = MaterialTheme.typography.titleLarge)
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -529,23 +475,26 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
         item {
             SettingsGroup("About") {
                 Text("ShareDing · linkding bookmark queue")
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Version")
-                    Text(version, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Developer")
-                    TextButton(onClick = { uriHandler.openUri("https://denis.evsyukov.org") }) {
-                        Text("Denis Evsyukov")
+                Column {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Version")
+                        Text(version, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Source code")
-                    TextButton(onClick = { uriHandler.openUri("https://github.com/juev/shareding") }) {
-                        Text("GitHub")
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .clickable { uriHandler.openUri("https://denis.evsyukov.org") },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Developer")
+                        Text("Denis Evsyukov", color = MaterialTheme.colorScheme.primary)
+                    }
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .clickable { uriHandler.openUri("https://github.com/juev/shareding") },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Source code")
+                        Text("GitHub", color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }

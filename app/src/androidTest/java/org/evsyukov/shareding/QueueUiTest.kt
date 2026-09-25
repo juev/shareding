@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.Bookmark
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -119,5 +120,11 @@ class QueueUiTest {
         compose.onNodeWithText("${info.versionName} (${info.longVersionCode})").assertIsDisplayed()
         compose.onNodeWithText("Denis Evsyukov").assertHasClickAction()
         compose.onNodeWithText("GitHub").assertHasClickAction()
+        val developerY = compose.onNodeWithText("Denis Evsyukov")
+            .fetchSemanticsNode().boundsInRoot.center.y
+        val sourceY = compose.onNodeWithText("GitHub")
+            .fetchSemanticsNode().boundsInRoot.center.y
+        assertTrue("About rows should have even spacing",
+            sourceY - developerY <= 56f * activity.resources.displayMetrics.density)
     }
 }

@@ -13,7 +13,7 @@ Saving a link should not depend on whether your linkding server is reachable at 
 ## How it works
 
 1. Share an HTTP(S) link to ShareDing from a browser or another app, or enter it in the Add Bookmark form. You can save links before configuring the server.
-2. ShareDing writes the bookmark to a Room database on the device before attempting a network request. The brief `Saved to queue` confirmation means the local write succeeded.
+2. ShareDing writes the bookmark to a Room database on the device before attempting a network request. The browser stays visible; a short `Saved to queue` Toast appears only after the local write succeeds. Invalid links and local save errors get a different message.
 3. WorkManager runs sync when a network is available. ShareDing checks the configured linkding server itself, so a server reachable through LAN or VPN does not need public internet access.
 4. After linkding accepts the bookmark, ShareDing removes it from the queue. Connection and server errors leave it queued for another attempt. Retries use exponential backoff starting at 30 seconds; Android may run them later than the scheduled time.
 
@@ -31,7 +31,7 @@ These screens show the current development build on an Android 16 emulator. The 
 
 1. Install the APK using [Obtainium](https://github.com/ImranR98/Obtainium) or download it from [Releases](https://github.com/juev/shareding/releases). See [Install and update](#install-and-update) for details.
 2. In Settings, enter your linkding server URL and API token, then tap **Save**. Use **Test Connection** to check the server. HTTPS is recommended; HTTP is also supported for servers on a trusted LAN or VPN.
-3. Share a link to ShareDing from another app, or tap `+` in Queue to add one manually. The full-screen form accepts a URL, title, description, and tags; **Fetch title** can fill in the page title.
+3. Open a browser's Share menu and select **ShareDing**. It returns to the browser after a short confirmation without opening the main app screen. You can also tap `+` in Queue to add a link manually. The full-screen form accepts a URL, title, description, and tags; **Fetch title** can fill in the page title.
 4. Check Queue for waiting, sending, or failed bookmarks. Failed entries have a **Retry** action; **Sync Now** in Settings requests another attempt. Removing an entry requires confirmation.
 
 Settings also lets you set default tags and choose whether new bookmarks are marked unread or archived. It shows the queue count, last successful sync, latest error, and an inline Test Connection result. The API token is encrypted using a key held in Android Keystore. If you use HTTP, Settings warns that the token and bookmark data are sent without TLS.
