@@ -20,8 +20,8 @@ android {
         applicationId = "org.evsyukov.shareding"
         minSdk = 28
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.1.3"
+        versionCode = 7
+        versionName = "0.1.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -48,6 +48,13 @@ android {
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
+    }
+
+    packaging {
+        jniLibs {
+            // graphics-path ships stripped binaries; skip AGP's redundant strip attempt.
+            keepDebugSymbols.add("**/libandroidx.graphics.path.so")
+        }
     }
 
     buildFeatures {

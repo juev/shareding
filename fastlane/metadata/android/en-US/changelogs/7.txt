@@ -1,0 +1,1 @@
+Track available networks with Android callbacks for LAN and VPN connectivity.
