@@ -9,7 +9,6 @@ IssueTracker: https://github.com/juev/shareding/issues
 Changelog: https://github.com/juev/shareding/releases
 
 AutoName: ShareDing
-Summary: Save shared links to linkding, even when your server is offline
 Description: |-
   ShareDing sends links from Android's Share menu to your own linkding server. It stores each link in a local queue before sending, so you can keep browsing when the server is offline or available only through a LAN or VPN.
 
