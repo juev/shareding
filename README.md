@@ -1,6 +1,7 @@
 # ShareDing for Android
 
 [![Android CI](https://github.com/juev/shareding/actions/workflows/android.yml/badge.svg)](https://github.com/juev/shareding/actions/workflows/android.yml)
+[![Latest release](https://img.shields.io/github/v/release/juev/shareding?include_prereleases)](https://github.com/juev/shareding/releases)
 
 ShareDing is an Android share target for [linkding](https://github.com/sissbruecker/linkding). It saves links from other apps to a local queue, then sends them to your linkding server. It requires Android 9 (API 28) or newer.
 
@@ -21,7 +22,7 @@ The queue survives app restarts and device reboots. Delivery is at least once: i
 
 ## Screenshots
 
-These screens show the current development build on an Android 16 emulator. The queue contains example links; no linkding server or API token is configured. The published `v0.1.0-rc.1` APK still has the previous interface.
+These screens were captured on an Android 16 emulator with example links in the queue. No linkding server or API token was configured.
 
 | Queue | Add Bookmark | Settings | About |
 | --- | --- | --- | --- |
@@ -42,11 +43,11 @@ ShareDing is written in Kotlin. Jetpack Compose provides the interface, Room sto
 
 ## Install and update
 
-For automatic update checks, use [Obtainium](https://github.com/ImranR98/Obtainium). Add `https://github.com/juev/shareding` as a source and enable **Include prereleases** while only prerelease versions are available. Install `ShareDing-v0.1.0-rc.1.apk` from the release it finds.
+For automatic update checks, use [Obtainium](https://github.com/ImranR98/Obtainium). Add `https://github.com/juev/shareding` as a source and enable **Include prereleases** to receive test builds. Install the APK from the release it finds.
 
 For manual installation, open [Releases](https://github.com/juev/shareding/releases) on your phone, download the latest APK, and confirm the installation. If Android asks for permission to install apps from this source, grant it to your browser or file manager. To update, download the newer APK and install it over the current version.
 
-You can also install the same APK over USB with `adb install -r ShareDing-v0.1.0-rc.1.apk`. All methods require Android 9 or newer. Release APKs use the same signing key, which Android requires for updates. Debug APKs use a different key. If you already installed a debug build, uninstall it before installing the release build. Uninstalling deletes its settings and local queue.
+You can also install the downloaded APK over USB with `adb install -r /path/to/downloaded.apk`. All methods require Android 9 or newer. Release APKs use the same signing key, which Android requires for updates. Debug APKs use a different key. If you already installed a debug build, uninstall it before installing the release build. Uninstalling deletes its settings and local queue.
 
 ## Build
 
@@ -61,9 +62,9 @@ Install JDK 17 or newer, Android SDK Platform 36, and Build Tools 36.0.0. Set th
 
 The last command requires a running emulator or connected device. The debug APK is at `app/build/outputs/apk/debug/app-debug.apk`; install it with `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
 
-CI builds the app and runs unit tests and lint for pushes to `main` and pull requests. Build a signed release APK locally on macOS with `./scripts/build-release-macos.sh`. The script reads the key from `$HOME/.local/share/shareding/release.jks` and its password from macOS Keychain (service `org.evsyukov.shareding.release`, account `shareding`). Set `SHAREDING_RELEASE_KEYSTORE` and `SHAREDING_RELEASE_PASSWORD` to use other locations. Back up both the key and Keychain password securely: without them, future APKs cannot update existing installations.
+CI builds the app and runs unit tests and lint for pushes to `main` and pull requests. For a release, increment `versionCode` and update `versionName` in `app/build.gradle.kts`, commit and push the change to `main`, then push a `v`-prefixed tag on that commit matching `versionName`. The [release workflow](.github/workflows/release.yml) builds and signs the APK, checks the tag against the package version, and publishes a GitHub Release with the APK and a SHA-256 checksum. You can run the workflow manually to check signing without publishing a release.
 
-For each new release, increment `versionCode` and update `versionName` in `app/build.gradle.kts`. The signed APK is written to `app/build/outputs/apk/release/app-release.apk`. See [Android App Signing](https://developer.android.com/studio/publish/app-signing) for the signing key requirement.
+The workflow reads the signing key and password from GitHub Actions repository secrets. For a local signed build on macOS, run `./scripts/build-release-macos.sh`; it reads the key from `$HOME/.local/share/shareding/release.jks` and its password from macOS Keychain (service `org.evsyukov.shareding.release`, account `shareding`). Set `SHAREDING_RELEASE_KEYSTORE` and `SHAREDING_RELEASE_PASSWORD` to use other locations. The signed APK is written to `app/build/outputs/apk/release/app-release.apk`. Back up the key and password securely: without them, future APKs cannot update existing installations. See [Android App Signing](https://developer.android.com/studio/publish/app-signing) for the signing key requirement.
 
 The behavior contract is in the [specification](docs/specs/share-to-linkding.md).
 
