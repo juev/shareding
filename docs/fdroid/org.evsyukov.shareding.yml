@@ -9,6 +9,7 @@ IssueTracker: https://github.com/juev/shareding/issues
 Changelog: https://github.com/juev/shareding/releases
 
 AutoName: ShareDing
+
 RepoType: git
 Repo: https://github.com/juev/shareding.git
 Binaries: https://github.com/juev/shareding/releases/download/v%v/ShareDing-v%v.apk
