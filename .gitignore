@@ -1,0 +1,26 @@
+# Android Studio and Gradle
+.gradle/
+.kotlin/
+.idea/
+**/build/
+local.properties
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+*.hprof
+*.apk
+*.aab
+
+# Release signing and local secrets
+*.jks
+*.keystore
+*.p12
+*.pfx
+signing.properties
+.env
+.env.*
+!.env.example
+
+# macOS
+.DS_Store
