@@ -10,11 +10,11 @@ The app accepts a link from Android's Share menu or its add form, saves it on th
 
 ## Requirements
 
-- R1. Accept HTTP(S) URLs from `ACTION_SEND` and save each entry to the local database before making a network request. Show `Saved` only after a successful local write. Do not show it for an invalid URL or database error.
+- R1. Accept HTTP(S) URLs from `ACTION_SEND` and save each entry to the local database before making a network request. Show `Saved to queue` only after a successful local write. Do not show it for an invalid URL or database error.
 - R2. Send queued entries when a network becomes available. The server may be on a LAN or VPN without public internet access. `NET_CAPABILITY_VALIDATED` must not block such servers. Check linkding availability with an API request before sending.
 - R3. Keep unsent entries after a timeout, HTTP error, connection error, or restart, and keep retrying without a fixed limit. WorkManager uses exponential backoff starting at 30 seconds; Android may run the work later. A successful `POST /api/bookmarks/` removes only the entry that was sent.
-- R4. Let users add a URL manually with title, description, and tags. Fill in the page title when it can be retrieved. Settings include the server URL, API token, default tags, unread/archive options, Test Connection, Sync Now, last successful sync time, and queue count. The queue shows statuses, manual Retry, refresh, and an empty state.
-- R5. Keep the two Queue/Settings tabs, Add Bookmark form, icon, and brief confirmation from the iOS design. Use native Android controls, Light/Dark themes, and screen reader labels.
+- R4. Let users add a URL manually with title, description, and tags. Fill in the page title when it can be retrieved. Settings include the server URL, API token, default tags, unread/archive options, Test Connection, Sync Now, last successful sync time, and queue count. Keep the connection result visible until the server URL or token changes. The queue shows status chips, Retry for failed entries, refresh, and an empty state with an Add bookmark action.
+- R5. Keep the two Queue/Settings tabs, full-screen Add Bookmark form, icon, and brief confirmation from the iOS design. Use native Android controls, Light/Dark themes, and screen reader labels.
 - R6. Crashes, stopped background work, and reboots must not lose entries. Concurrent additions and manual sync must not remove an entry without confirmed delivery. Adding a duplicate URL must not change an entry while it is being sent.
 - R7. Allow manual removal of one entry only after user confirmation. Canceling the confirmation keeps the entry.
 - R8. Set `minSdk` to 28. Verify behavior on Android 9 and a current Android version.
