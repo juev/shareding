@@ -1,16 +1,42 @@
 # ShareDing for Android
 
-ShareDing saves links from Android's Share menu to a local queue and sends them to [linkding](https://github.com/sissbruecker/linkding). It is written in Kotlin, with a Jetpack Compose interface, Room queue, and WorkManager background sync. It requires Android 9 (API 28) or newer.
+[![Android CI](https://github.com/juev/shareding/actions/workflows/android.yml/badge.svg)](https://github.com/juev/shareding/actions/workflows/android.yml)
 
-## Use
+ShareDing is an Android share target for [linkding](https://github.com/sissbruecker/linkding). It saves links from other apps to a local queue, then sends them to your linkding server. It requires Android 9 (API 28) or newer.
 
-1. Enter your linkding server URL and API token in Settings. The URL may use `https://` or `http://`.
-2. Share a link from a browser to ShareDing, or add one with the `+` button in Queue.
-3. ShareDing saves the link before making a network request. When a network is available, it checks the linkding server and sends queued bookmarks. It removes a bookmark from the queue only after a successful response.
+[Releases](https://github.com/juev/shareding/releases) · [Quick start](#quick-start) · [Screenshots](#screenshots) · [Contributing](#contributing) · [License](#license)
 
-Failed sends stay in the queue. WorkManager retries with exponential backoff starting at 30 seconds; Android may run the work later. Adding another link, using Retry or Sync Now, and saving settings can trigger an earlier attempt. The linkding server may be reachable through a LAN or VPN without public internet access. HTTP is supported, but Settings warns that it sends the API token and request data without TLS.
+## Why it exists
 
-You can remove a queued bookmark manually after confirming the action. If the server accepts a POST but its response is lost, ShareDing may send the bookmark again; linkding updates an existing bookmark with the same URL.
+Saving a link should not depend on whether your linkding server is reachable at that moment. It may be offline or accessible only when your phone joins your home network or VPN. ShareDing records the link on the phone first, so you can leave the Share menu immediately and let Android deliver it later. This project brings the sharing workflow of the iOS ShareDing app to Android, using Android's background work and network signals for delivery.
+
+## How it works
+
+1. Share an HTTP(S) link to ShareDing from a browser or another app, or enter it in the Add Bookmark form. You can save links before configuring the server.
+2. ShareDing writes the bookmark to a Room database on the device before attempting a network request. The brief `Saved` confirmation means the local write succeeded.
+3. WorkManager runs sync when a network is available. ShareDing checks the configured linkding server itself, so a server reachable through LAN or VPN does not need public internet access.
+4. After linkding accepts the bookmark, ShareDing removes it from the queue. Connection and server errors leave it queued for another attempt. Retries use exponential backoff starting at 30 seconds; Android may run them later than the scheduled time.
+
+The queue survives app restarts and device reboots. Delivery is at least once: if linkding accepts a request but the response is lost, ShareDing may send the same URL again. Linkding updates an existing bookmark with that URL.
+
+## Screenshots
+
+These screens show the signed `v0.1.0-rc.1` release on an Android 16 emulator. The queue contains example links; no linkding server or API token is configured.
+
+| Queue | Add Bookmark | Settings |
+| --- | --- | --- |
+| <a href="docs/images/queue.png"><img src="docs/images/queue.png" alt="Queue with two pending bookmarks, retry and delete actions" width="240"></a> | <a href="docs/images/add-bookmark.png"><img src="docs/images/add-bookmark.png" alt="Add Bookmark form with URL, title, description and tags" width="240"></a> | <a href="docs/images/settings.png"><img src="docs/images/settings.png" alt="Settings for linkding, bookmark defaults and sync" width="240"></a> |
+
+## Quick start
+
+1. Install the APK using [Obtainium](https://github.com/ImranR98/Obtainium) or download it from [Releases](https://github.com/juev/shareding/releases). See [Install and update](#install-and-update) for details.
+2. In Settings, enter your linkding server URL and API token, then tap **Save**. Use **Test Connection** to check the server. HTTPS is recommended; HTTP is also supported for servers on a trusted LAN or VPN.
+3. Share a link to ShareDing from another app, or tap `+` in Queue to add one manually. The form accepts a URL, title, description, and tags; **Fetch title** can fill in the page title.
+4. Check Queue for pending or failed bookmarks. Tap **Retry** on an entry or **Sync Now** in Settings to request another attempt. Removing an entry requires confirmation.
+
+Settings also lets you set default tags and choose whether new bookmarks are marked unread or archived. It shows the queue count, last successful sync, and latest error. The API token is encrypted using a key held in Android Keystore. If you use HTTP, Settings warns that the token and bookmark data are sent without TLS.
+
+ShareDing is written in Kotlin. Jetpack Compose provides the interface, Room stores the queue, and WorkManager handles background sync.
 
 ## Install and update
 
@@ -38,3 +64,13 @@ CI builds the app and runs unit tests and lint for pushes to `main` and pull req
 For each new release, increment `versionCode` and update `versionName` in `app/build.gradle.kts`. The signed APK is written to `app/build/outputs/apk/release/app-release.apk`. See [Android App Signing](https://developer.android.com/studio/publish/app-signing) for the signing key requirement.
 
 The behavior contract is in the [specification](docs/specs/share-to-linkding.md).
+
+## Contributing
+
+Bug reports and feature requests belong in [GitHub Issues](https://github.com/juev/shareding/issues). Include the Android version, steps to reproduce, and the expected and actual result. Remove API tokens and private server addresses from screenshots and logs before posting them.
+
+Pull requests are welcome. For code changes, run `./gradlew assembleDebug testDebugUnitTest lintDebug` and describe any manual checks of sharing, the queue, or the interface. For documentation changes, check links and screenshot paths.
+
+## License
+
+ShareDing is available under the [MIT License](LICENSE).
