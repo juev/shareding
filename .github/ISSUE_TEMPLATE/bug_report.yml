@@ -1,0 +1,60 @@
+name: Bug report
+description: Report a problem with ShareDing
+title: "Bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        For security vulnerabilities, do not open a public issue. Use
+        [GitHub private vulnerability reporting](https://github.com/juev/shareding/security/advisories).
+        Before submitting, remove API tokens, private server URLs, bookmark contents,
+        and other personal information from logs and screenshots.
+  - type: input
+    id: app-version
+    attributes:
+      label: ShareDing version
+      description: Find Version in Settings.
+      placeholder: Enter the installed version
+    validations:
+      required: true
+  - type: input
+    id: android-version
+    attributes:
+      label: Android version and device
+      placeholder: "Android 16, Pixel 8"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the actions that reproduce the problem.
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Optional. Redact API tokens, private server URLs, bookmark contents, and personal information before attaching.
+      placeholder: Paste relevant redacted logs or drag and drop screenshots here.
+    validations:
+      required: false

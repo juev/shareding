@@ -1,5 +1,7 @@
 # ShareDing for Android
 
+<img src="app/src/main/res/mipmap-nodpi/ic_launcher.png" alt="ShareDing app icon" width="112">
+
 [![Android CI](https://github.com/juev/shareding/actions/workflows/android.yml/badge.svg)](https://github.com/juev/shareding/actions/workflows/android.yml)
 [![Latest release](https://img.shields.io/github/v/release/juev/shareding?include_prereleases)](https://github.com/juev/shareding/releases)
 
@@ -70,9 +72,7 @@ The behavior contract is in the [specification](docs/specs/share-to-linkding.md)
 
 ## Contributing
 
-Bug reports and feature requests belong in [GitHub Issues](https://github.com/juev/shareding/issues). Include the Android version, steps to reproduce, and the expected and actual result. Remove API tokens and private server addresses from screenshots and logs before posting them.
-
-Pull requests are welcome. For code changes, run `./gradlew assembleDebug testDebugUnitTest lintDebug` and describe any manual checks of sharing, the queue, or the interface. For documentation changes, check links and screenshot paths.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for bug reports, feature requests, and pull requests. Report suspected vulnerabilities privately using the [security policy](SECURITY.md).
 
 ## License
 
