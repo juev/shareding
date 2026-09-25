@@ -57,4 +57,31 @@ class LinkdingApiTest {
             }
         }
     }
+
+    @Test fun listsAllTagPagesWithoutFollowingServerSuppliedNextUrl() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""{"count":3,"next":"http://other.example/api/tags/?offset=2","results":[{"name":"reading"},{"name":"work notes"}]}"""))
+            server.enqueue(MockResponse().setBody("""{"count":3,"next":null,"results":[{"name":"research"}]}"""))
+
+            assertEquals(setOf("reading", "work notes", "research"),
+                LinkdingApi().listTags(server.url("/linkding/").toString(), "secret").toSet())
+            assertEquals("/linkding/api/tags/?limit=100&offset=0", server.takeRequest().path)
+            val second = server.takeRequest()
+            assertEquals("/linkding/api/tags/?limit=100&offset=2", second.path)
+            assertEquals("Token secret", second.getHeader("Authorization"))
+        }
+    }
+
+    @Test fun tagListFailureDoesNotProducePartialSuggestions() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""{"count":2,"next":"more","results":[{"name":"reading"}]}"""))
+            server.enqueue(MockResponse().setResponseCode(503))
+            try {
+                LinkdingApi().listTags(server.url("/").toString(), "secret")
+                fail("A failed page must fail the whole tag list")
+            } catch (error: ApiException) {
+                assertEquals(503, error.code)
+            }
+        }
+    }
 }

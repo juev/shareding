@@ -8,13 +8,21 @@ import kotlinx.coroutines.CancellationException
 class NetworkSelector(context: Context, private val api: LinkdingApi) {
     private val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
-    suspend fun checkAndSelect(server: String, token: String, preferred: Network? = null): Network? {
+    suspend fun checkAndSelect(server: String, token: String, preferred: Network? = null): Network? =
+        select(preferred) { network ->
+            api.check(server, token, network)
+            network
+        }
+
+    suspend fun listTags(server: String, token: String): List<String> =
+        select(null) { network -> api.listTags(server, token, network) }
+
+    private suspend fun <T> select(preferred: Network?, action: suspend (Network?) -> T): T {
         val networks = (listOfNotNull(preferred) + connectivity.allNetworks).distinct()
         var lastError: Exception? = null
         for (network in networks + listOf(null)) {
             try {
-                api.check(server, token, network)
-                return network
+                return action(network)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Exception) {

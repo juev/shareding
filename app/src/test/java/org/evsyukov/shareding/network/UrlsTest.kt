@@ -22,4 +22,13 @@ class UrlsTest {
     @Test fun tagsKeepSpacesAndMergeDefaults() {
         assertEquals("two words, one", TagNames.combine("two words", "one, two words"))
     }
+
+    @Test fun tagSuggestionsReplaceOnlyTheCurrentName() {
+        val available = listOf("work", "reading", "read later", "research")
+        assertEquals(listOf("reading", "read later"),
+            TagNames.suggestions("work, rea", available))
+        assertEquals("work, reading, ", TagNames.complete("work, rea", "reading"))
+        assertEquals(emptyList<String>(), TagNames.suggestions("work, ", available))
+        assertEquals("reading, ", TagNames.complete("rea", "reading"))
+    }
 }

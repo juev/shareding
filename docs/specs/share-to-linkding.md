@@ -1,6 +1,6 @@
 # Sending links to linkding on Android
 
-Status: implemented. Build, unit, UI, and instrumentation tests passed on Android 9 and Android 16. A real VPN and an HTTPS server with a trusted certificate have not been tested manually.
+Status: R1–R10 implemented. Build, unit, lint, and all 18 instrumentation tests passed on Android 9 and Android 16. A signed 0.1.0 APK upgraded an installed 0.1.0-rc.2 APK without losing a queued link. A real VPN and an HTTPS server with a trusted certificate have not been tested manually.
 
 Sources: the user's requirements, the agreed RFC, and the iOS app in the sibling `share` repository.
 
@@ -19,6 +19,7 @@ The app accepts a link from Android's Share menu or its add form, saves it on th
 - R7. Allow manual removal of one entry only after user confirmation. Canceling the confirmation keeps the entry.
 - R8. Set `minSdk` to 28. Verify behavior on Android 9 and a current Android version.
 - R9. Accept `https://` and `http://` server URLs. For HTTP, show that the API token and request are sent without TLS. HTTPS uses normal certificate validation; redirects to another origin must not receive the token.
+- R10. Keep one visible Save settings action while editing any Settings section. After a successful save, hide the keyboard and show confirmation; on failure, keep the draft available for correction. Explain comma-separated tag entry with an example in Settings and Add Bookmark. When saved server credentials are available, fetch all pages of existing linkding tags and suggest matching names in both forms. Suggestions must not prevent entering a new tag or saving while the server is unreachable. Default tags are saved locally; Add Bookmark saves the entered tags with the queued bookmark.
 
 ## Invariants and compatibility
 
@@ -27,10 +28,13 @@ The app accepts a link from Android's Share menu or its add form, saves it on th
 - Delivery has at-least-once semantics. If the server accepts a POST but the response is lost, the request may be repeated. Current linkding updates an existing bookmark with the same URL.
 - Missing server URL or token does not prevent local saving. The queue remains available for delivery after setup.
 - A saved page URL may use HTTP or HTTPS regardless of the linkding server URL scheme.
+- Editing or loading tag suggestions does not change already queued bookmarks. A missing connection does not prevent local tag entry or saving bookmark defaults.
 
 ## Design decisions
 
 Kotlin and Jetpack Compose provide the Android UI; Room stores the queue; WorkManager runs durable background sync with a network constraint and retries. Its `NetworkRequest` requires the `INTERNET` capability, but not `VALIDATED` or `NOT_VPN`: Wi-Fi without public internet validation and VPN remain candidates. The worker reads Room entries in creation order, tries available networks, and checks linkding through `GET /api/tags/`. The API token is stored separately from the queue using Android Keystore protection. Android Network Security Config allows HTTP for arbitrary server addresses; the app sends the token only to the configured origin.
+
+For R10, the Settings Save action applies to the current form draft and remains visible below the scrollable sections. Tag suggestions use the saved server URL and token, follow the existing LAN/VPN network selection behavior, and request each page from the configured origin. An unavailable tag list leaves free-text entry usable.
 
 ## Verification scenarios
 
@@ -39,6 +43,7 @@ Kotlin and Jetpack Compose provide the Android UI; Room stores the queue; WorkMa
 - R2, R9: Reach a linkding server using HTTP or HTTPS only through LAN/VPN. Delivery works without public internet validation; HTTP shows a warning.
 - R4, R5: The add form, Queue, and Settings perform their actions and show the agreed states in Light/Dark themes.
 - R7: Cancel removal and keep the entry; confirm removal and delete only the selected entry.
+- R10: Enter default tags, save from the bottom of Settings, and verify persistence and keyboard dismissal. Type a partial tag name and select a server suggestion in either form; verify comma-separated names and local saving. Return an API error or disconnect the server and verify that manual tag entry and saving still work.
 
 Automated checks: `./gradlew assembleDebug assembleRelease testDebugUnitTest lintDebug connectedDebugAndroidTest`. URL and API cases are covered in `app/src/test/java/org/evsyukov/shareding/network/`; Room queue, Share Intent, worker, scheduler, and UI cases are covered in `app/src/androidTest/java/org/evsyukov/shareding/`.
 

@@ -10,7 +10,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -51,6 +54,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -69,6 +73,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -129,16 +135,36 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ShareDingScreen(container: AppContainer) {
-    val context = LocalContext.current
     val bookmarks by container.db.bookmarks().observeAll().collectAsState(initial = emptyList())
     val settings by container.settings.state.collectAsState()
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<Bookmark?>(null) }
+    var serverTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var tagLoadError by remember { mutableStateOf(false) }
+    var tagRefresh by remember { mutableIntStateOf(0) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
+    LaunchedEffect(settings.serverUrl, settings.hasToken, selectedTab, showAdd, tagRefresh) {
+        serverTags = emptyList()
+        tagLoadError = false
+        if ((!showAdd && selectedTab != 1) || settings.serverUrl.isBlank() || !settings.hasToken) {
+            return@LaunchedEffect
+        }
+        try {
+            val token = withContext(Dispatchers.IO) { container.settings.token().orEmpty() }
+            serverTags = container.networkSelector.listTags(settings.serverUrl, token)
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
+            tagLoadError = true
+        }
+    }
+
     if (showAdd) {
-        AddBookmarkScreen(container, onDismiss = { showAdd = false })
+        AddBookmarkScreen(container, serverTags, tagLoadError,
+            canRefreshTags = settings.hasToken && settings.serverUrl.isNotBlank(),
+            onRefreshTags = { tagRefresh++ }, onDismiss = { showAdd = false })
         return
     }
 
@@ -173,25 +199,19 @@ private fun ShareDingScreen(container: AppContainer) {
                 }
             },
             onDelete = { deleteTarget = it })
-        else SettingsScreen(settings, bookmarks.size, padding,
+        else SettingsScreen(settings, bookmarks.size, padding, serverTags, tagLoadError,
             onSave = { server, token, tags, unread, archived ->
-                scope.launch {
-                    try {
-                        Urls.server(server)
-                        withContext(Dispatchers.IO) {
-                            container.settings.save(server.trim(), token, tags.trim(), unread, archived)
-                        }
-                        container.scheduler.enqueue(urgent = true)
-                        Toast.makeText(context, "Settings saved", Toast.LENGTH_SHORT).show()
-                    } catch (error: Exception) {
-                        Toast.makeText(context, error.message ?: "Cannot save settings", Toast.LENGTH_LONG).show()
-                    }
+                if (server.isNotBlank()) Urls.server(server)
+                withContext(Dispatchers.IO) {
+                    container.settings.save(server.trim(), token, tags.trim(), unread, archived)
                 }
+                container.scheduler.enqueue(urgent = true)
             },
             onTest = { server, token ->
                 val actualToken = token.ifBlank { container.settings.token().orEmpty() }
                 container.networkSelector.checkAndSelect(server, actualToken)
-            }, onSync = { container.scheduler.enqueue(urgent = true) })
+            }, onSync = { container.scheduler.enqueue(urgent = true) },
+            onRefreshTags = { tagRefresh++ })
     }
     deleteTarget?.let { target ->
         AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text("Delete bookmark?") },
@@ -297,7 +317,10 @@ private fun QueueScreen(bookmarks: List<Bookmark>, padding: PaddingValues,
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddBookmarkScreen(container: AppContainer, onDismiss: () -> Unit) {
+private fun AddBookmarkScreen(container: AppContainer, availableTags: List<String>,
+                              tagLoadError: Boolean, canRefreshTags: Boolean,
+                              onRefreshTags: () -> Unit,
+                              onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var url by rememberSaveable { mutableStateOf("") }
@@ -365,17 +388,56 @@ private fun AddBookmarkScreen(container: AppContainer, onDismiss: () -> Unit) {
             }
             OutlinedTextField(description, { description = it }, modifier = Modifier.fillMaxWidth(),
                 label = { Text("Description") })
-            OutlinedTextField(tags, { tags = it }, modifier = Modifier.fillMaxWidth(),
-                label = { Text("Tags") }, placeholder = { Text("tag1, tag two") })
+            TagInput(tags, { tags = it }, "Tags", availableTags,
+                "Comma-separated: reading, work notes. Defaults are added automatically.",
+                tagLoadError, canRefresh = canRefreshTags, onRefreshTags = onRefreshTags)
+        }
+    }
+}
+
+@Composable
+private fun TagInput(value: String, onValueChange: (String) -> Unit, label: String,
+                     availableTags: List<String>, hint: String, tagLoadError: Boolean,
+                     canRefresh: Boolean, onRefreshTags: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedTextField(value, onValueChange, modifier = Modifier.fillMaxWidth(),
+            label = { Text(label) }, placeholder = { Text("reading, work notes") },
+            singleLine = true, supportingText = { Text(hint) })
+        val suggestions = TagNames.suggestions(value, availableTags)
+        if (suggestions.isNotEmpty()) {
+            val bringSuggestionsIntoView = remember { BringIntoViewRequester() }
+            LaunchedEffect(suggestions) { bringSuggestionsIntoView.bringIntoView() }
+            Text("Existing tags", style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth().bringIntoViewRequester(bringSuggestionsIntoView)
+                .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                suggestions.forEach { name ->
+                    SuggestionChip(onClick = { onValueChange(TagNames.complete(value, name)) },
+                        label = { Text(name) })
+                }
+            }
+        }
+        if (canRefresh && tagLoadError) {
+            Text("Tag suggestions unavailable. You can still type tags.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (canRefresh) {
+            TextButton(onClick = onRefreshTags) { Text("Refresh tags") }
         }
     }
 }
 
 @Composable
 private fun SettingsScreen(settings: Settings, queueCount: Int, padding: PaddingValues,
-                           onSave: (String, String?, String, Boolean, Boolean) -> Unit,
-                           onTest: suspend (String, String) -> Unit, onSync: () -> Unit) {
+                           availableTags: List<String>, tagLoadError: Boolean,
+                           onSave: suspend (String, String?, String, Boolean, Boolean) -> Unit,
+                           onTest: suspend (String, String) -> Unit, onSync: () -> Unit,
+                           onRefreshTags: () -> Unit) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     val uriHandler = LocalUriHandler.current
     val version = remember(context) { appVersion(context) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -388,12 +450,18 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
     var testFailed by rememberSaveable { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
     var testVersion by remember { mutableIntStateOf(0) }
-    LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp),
+    var saving by remember { mutableStateOf(false) }
+    var saveStatus by rememberSaveable { mutableStateOf<String?>(null) }
+    var saveFailed by rememberSaveable { mutableStateOf(false) }
+    val savedConnectionIsCurrent = server.trim() == settings.serverUrl && token.isBlank()
+    Column(Modifier.fillMaxSize().padding(padding)) {
+    LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item {
             SettingsGroup("Linkding") {
                 OutlinedTextField(server, {
                     server = it
+                    saveStatus = null
                     testVersion++
                     testStatus = null
                     testing = false
@@ -406,6 +474,7 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
                 }
                 OutlinedTextField(token, {
                     token = it
+                    saveStatus = null
                     testVersion++
                     testStatus = null
                     testing = false
@@ -413,9 +482,6 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
                     label = { Text(if (settings.hasToken) "API token (leave empty to keep current)" else "API token") },
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { onSave(server, token.takeIf { it.isNotBlank() }, tags, unread, archived) }) {
-                        Text("Save")
-                    }
                     OutlinedButton(onClick = {
                         val version = ++testVersion
                         testStatus = "Checking connection…"
@@ -448,17 +514,21 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
         }
         item {
             SettingsGroup("Bookmark defaults") {
-                OutlinedTextField(tags, { tags = it }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Default tags") })
+                TagInput(tags, { tags = it; saveStatus = null }, "Default tags",
+                    if (savedConnectionIsCurrent) availableTags else emptyList(),
+                    "Comma-separated: reading, work notes. Added to new bookmarks.",
+                    tagLoadError && savedConnectionIsCurrent,
+                    canRefresh = settings.hasToken && settings.serverUrl.isNotBlank() &&
+                        savedConnectionIsCurrent, onRefreshTags = onRefreshTags)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Mark unread")
-                    Switch(unread, { unread = it })
+                    Switch(unread, { unread = it; saveStatus = null })
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Archive")
-                    Switch(archived, { archived = it })
+                    Switch(archived, { archived = it; saveStatus = null })
                 }
             }
         }
@@ -499,6 +569,41 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
                 }
             }
         }
+    }
+    Surface(tonalElevation = 2.dp) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Button(onClick = {
+                scope.launch {
+                    if (saving) return@launch
+                    saving = true
+                    try {
+                        onSave(server, token.takeIf { it.isNotBlank() }, tags, unread, archived)
+                        token = ""
+                        focusManager.clearFocus()
+                        keyboard?.hide()
+                        saveFailed = false
+                        saveStatus = "Settings saved"
+                        onRefreshTags()
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (error: Exception) {
+                        saveFailed = true
+                        saveStatus = error.message ?: "Cannot save settings"
+                    } finally {
+                        saving = false
+                    }
+                }
+            }, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
+                Text(if (saving) "Saving…" else "Save settings")
+            }
+            saveStatus?.let { status ->
+                Text(status, style = MaterialTheme.typography.bodySmall,
+                    color = if (saveFailed) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
     }
 }
 

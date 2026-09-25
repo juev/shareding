@@ -20,8 +20,8 @@ android {
         applicationId = "org.evsyukov.shareding"
         minSdk = 28
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.0-rc.2"
+        versionCode = 3
+        versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
