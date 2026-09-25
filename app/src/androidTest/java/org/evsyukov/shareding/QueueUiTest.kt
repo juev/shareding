@@ -1,9 +1,13 @@
 package org.evsyukov.shareding
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -104,5 +108,16 @@ class QueueUiTest {
         compose.onNodeWithText("Connection failed", substring = true).assertIsDisplayed()
         compose.onNodeWithText("Server URL").performTextInput("https://linkding.example")
         compose.onNodeWithText("Connection failed", substring = true).assertDoesNotExist()
+    }
+
+    @Suppress("DEPRECATION")
+    @Test fun aboutShowsVersionAndDeveloperLinks() {
+        compose.onNodeWithText("Settings").performClick()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("About"))
+        val activity = compose.activity
+        val info = activity.packageManager.getPackageInfo(activity.packageName, 0)
+        compose.onNodeWithText("${info.versionName} (${info.longVersionCode})").assertIsDisplayed()
+        compose.onNodeWithText("Denis Evsyukov").assertHasClickAction()
+        compose.onNodeWithText("GitHub").assertHasClickAction()
     }
 }

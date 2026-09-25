@@ -23,9 +23,9 @@ The queue survives app restarts and device reboots. Delivery is at least once: i
 
 These screens show the current development build on an Android 16 emulator. The queue contains example links; no linkding server or API token is configured. The published `v0.1.0-rc.1` APK still has the previous interface.
 
-| Queue | Add Bookmark | Settings |
-| --- | --- | --- |
-| <a href="docs/images/queue.png"><img src="docs/images/queue.png" alt="Queue with two pending bookmarks and status chips" width="240"></a> | <a href="docs/images/add-bookmark.png"><img src="docs/images/add-bookmark.png" alt="Full-screen Add Bookmark form with URL, title, description and tags" width="240"></a> | <a href="docs/images/settings.png"><img src="docs/images/settings.png" alt="Grouped settings for linkding, bookmark defaults and sync" width="240"></a> |
+| Queue | Add Bookmark | Settings | About |
+| --- | --- | --- | --- |
+| <a href="docs/images/queue.png"><img src="docs/images/queue.png" alt="Queue with two pending bookmarks and status chips" width="200"></a> | <a href="docs/images/add-bookmark.png"><img src="docs/images/add-bookmark.png" alt="Full-screen Add Bookmark form with URL, title, description and tags" width="200"></a> | <a href="docs/images/settings.png"><img src="docs/images/settings.png" alt="Grouped settings for linkding, bookmark defaults and sync" width="200"></a> | <a href="docs/images/about.png"><img src="docs/images/about.png" alt="About section with app version, developer website and source code links" width="200"></a> |
 
 ## Quick start
 
@@ -35,6 +35,8 @@ These screens show the current development build on an Android 16 emulator. The 
 4. Check Queue for waiting, sending, or failed bookmarks. Failed entries have a **Retry** action; **Sync Now** in Settings requests another attempt. Removing an entry requires confirmation.
 
 Settings also lets you set default tags and choose whether new bookmarks are marked unread or archived. It shows the queue count, last successful sync, latest error, and an inline Test Connection result. The API token is encrypted using a key held in Android Keystore. If you use HTTP, Settings warns that the token and bookmark data are sent without TLS.
+
+The About section shows the installed version and links to [Denis Evsyukov's website](https://denis.evsyukov.org) and the project source code.
 
 ShareDing is written in Kotlin. Jetpack Compose provides the interface, Room stores the queue, and WorkManager handles background sync.
 

@@ -70,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -428,6 +429,9 @@ private fun AddBookmarkScreen(container: AppContainer, onDismiss: () -> Unit) {
 private fun SettingsScreen(settings: Settings, queueCount: Int, padding: PaddingValues,
                            onSave: (String, String?, String, Boolean, Boolean) -> Unit,
                            onTest: suspend (String, String) -> Unit, onSync: () -> Unit) {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val version = remember(context) { appVersion(context) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var server by rememberSaveable(settings.serverUrl) { mutableStateOf(settings.serverUrl) }
     var token by rememberSaveable { mutableStateOf("") }
@@ -525,9 +529,34 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
         item {
             SettingsGroup("About") {
                 Text("ShareDing · linkding bookmark queue")
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Version")
+                    Text(version, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Developer")
+                    TextButton(onClick = { uriHandler.openUri("https://denis.evsyukov.org") }) {
+                        Text("Denis Evsyukov")
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Source code")
+                    TextButton(onClick = { uriHandler.openUri("https://github.com/juev/shareding") }) {
+                        Text("GitHub")
+                    }
+                }
             }
         }
     }
+}
+
+@Suppress("DEPRECATION")
+private fun appVersion(context: Context): String {
+    val info = context.packageManager.getPackageInfo(context.packageName, 0)
+    return "${info.versionName} (${info.longVersionCode})"
 }
 
 @Composable
