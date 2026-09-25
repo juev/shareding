@@ -9,27 +9,14 @@ IssueTracker: https://github.com/juev/shareding/issues
 Changelog: https://github.com/juev/shareding/releases
 
 AutoName: ShareDing
-Description: |-
-  ShareDing sends links from Android's Share menu to your own linkding server. It stores each link in a local queue before sending, so you can keep browsing when the server is offline or available only through a LAN or VPN.
-
-  Features:
-  * Share HTTP and HTTPS links without opening the main app screen.
-  * Add a URL, title, description, and tags manually.
-  * Keep pending bookmarks across app restarts and device reboots.
-  * Retry in the background when a network becomes available or a server error occurs.
-  * Review and retry queued bookmarks; remove entries with confirmation.
-  * Set default tags and bookmark options, with tag suggestions from linkding.
-
-  ShareDing requires Android 9 or newer and your own linkding server. Enter its URL and API token in Settings. HTTPS is recommended. HTTP is supported for servers on a trusted LAN or VPN, but sends the token and bookmark data without TLS.
-
 RepoType: git
 Repo: https://github.com/juev/shareding.git
 Binaries: https://github.com/juev/shareding/releases/download/v%v/ShareDing-v%v.apk
 
 Builds:
-  - versionName: 0.1.0
-    versionCode: 3
-    commit: 2e470a267eaf10301488eba468cab3b410ccb220
+  - versionName: 0.1.2
+    versionCode: 5
+    commit: 9ea9cebe87aaf601792955879a80e240c013d151
     gradle:
       - yes
     output: app/build/outputs/apk/release/app-release-unsigned.apk
@@ -38,5 +25,5 @@ AllowedAPKSigningKeys: 3693ca80cbfc0d7b30a403f49c25637d78b12d1a196bdec398f413fb5
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9]+\.[0-9]+\.[0-9]+$
-CurrentVersion: 0.1.0
-CurrentVersionCode: 3
+CurrentVersion: 0.1.2
+CurrentVersionCode: 5

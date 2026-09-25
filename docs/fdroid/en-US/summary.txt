@@ -1,1 +1,0 @@
-Save shared links to linkding, even when your server is offline
