@@ -1,0 +1,11 @@
+ShareDing sends links from Android's Share menu to your own linkding server. It stores each link in a local queue before sending, so you can keep browsing when the server is offline or available only through a LAN or VPN.
+
+Features:
+* Share HTTP and HTTPS links without opening the main app screen.
+* Add a URL, title, description, and tags manually.
+* Keep pending bookmarks across app restarts and device reboots.
+* Retry in the background when a network becomes available or a server error occurs.
+* Review and retry queued bookmarks; remove entries with confirmation.
+* Set default tags and bookmark options, with tag suggestions from linkding.
+
+ShareDing requires Android 9 or newer and your own linkding server. Enter its URL and API token in Settings. HTTPS is recommended. HTTP is supported for servers on a trusted LAN or VPN, but sends the token and bookmark data without TLS.

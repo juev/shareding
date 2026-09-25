@@ -1,0 +1,1 @@
+Initial stable release. Save links from Android's Share menu to a local queue, sync them to linkding in the background, and retry when the network or server is unavailable. Includes manual bookmarks, default tags, server tag suggestions, and LAN/VPN support.
