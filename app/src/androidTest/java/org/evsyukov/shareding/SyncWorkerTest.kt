@@ -4,6 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.WorkManager
 import androidx.work.testing.TestListenableWorkerBuilder
+import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -18,6 +19,39 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SyncWorkerTest {
+    @Test fun workerDrainsFiftyQueuedBookmarks() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val app = context.applicationContext as ShareDingApplication
+        WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
+        val dao = app.container.db.bookmarks()
+        withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+        MockWebServer().use { server ->
+            try {
+                app.container.settings.save(server.url("/").toString(), "test-token", "", true, false,
+                    ProxyConfig())
+                repeat(50) { index ->
+                    dao.insert(Bookmark(url = "https://example.com/worker/$index", title = "Item $index"))
+                }
+                server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                repeat(50) { server.enqueue(MockResponse().setResponseCode(201).setBody("{}")) }
+
+                TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+
+                assertEquals(0, dao.count())
+                assertEquals(51, server.requestCount)
+                assertEquals("GET", server.takeRequest().method)
+                val sentUrls = (1..50).map {
+                    val request = server.takeRequest()
+                    assertEquals("POST", request.method)
+                    JsonParser.parseString(request.body.readUtf8()).asJsonObject.get("url").asString
+                }
+                assertEquals((0 until 50).map { "https://example.com/worker/$it" }, sentUrls)
+            } finally {
+                app.container.settings.save("", null, "", true, false, ProxyConfig())
+            }
+        }
+    }
+
     @Test fun workerFetchesPageAndSendsBookmarkThroughProxy() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val app = context.applicationContext as ShareDingApplication

@@ -165,7 +165,9 @@ private fun ShareDingScreen(container: AppContainer) {
     Scaffold(
         topBar = {
             TopAppBar(title = { Text(if (selectedTab == 0) "Queue" else "Settings") }, actions = {
-                if (selectedTab == 0) IconButton(onClick = { container.scheduler.enqueueAfterCurrent() }) {
+                if (selectedTab == 0) IconButton(onClick = {
+                    scope.launch { container.scheduler.requestSync() }
+                }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Sync now")
                 }
             })
@@ -189,7 +191,7 @@ private fun ShareDingScreen(container: AppContainer) {
             onRetry = { bookmark ->
                 scope.launch {
                     withContext(Dispatchers.IO) { container.db.bookmarks().markPending(bookmark.id) }
-                    container.scheduler.enqueueAfterCurrent()
+                    container.scheduler.requestSync()
                 }
             },
             onDelete = { deleteTarget = it })
@@ -202,14 +204,14 @@ private fun ShareDingScreen(container: AppContainer) {
                         proxyUsername, proxyPassword)
                     container.settings.save(server.trim(), token, tags.trim(), unread, archived, proxy)
                 }
-                container.scheduler.enqueueAfterCurrent()
+                container.scheduler.requestSync()
             },
             onTest = { server, token, proxyEnabled, proxyHost, proxyPort, proxyUsername, proxyPassword ->
                 val actualToken = token.ifBlank { container.settings.token().orEmpty() }
                 val proxy = container.settings.resolveProxy(proxyEnabled, proxyHost, proxyPort,
                     proxyUsername, proxyPassword)
                 container.networkSelector.checkAndSelect(server, actualToken, proxy = proxy)
-            }, onSync = { container.scheduler.enqueueAfterCurrent() },
+            }, onSync = { scope.launch { container.scheduler.requestSync() } },
             onRefreshTags = { tagRefresh++ })
     }
     deleteTarget?.let { target ->
@@ -342,14 +344,18 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
                         description = description.trim(), tags = TagNames.combine(defaults.defaultTags, tags),
                         unread = defaults.unread, archived = defaults.archived))
                 }
-                if (id != -1L) runCatching { container.scheduler.enqueueAfterCurrent() }
-                Toast.makeText(context, if (id == -1L) "Already in queue" else "Saved to queue",
-                    Toast.LENGTH_SHORT).show()
-                onDismiss()
+                if (id != -1L) container.scheduler.requestSync()
+                withContext(Dispatchers.Main.immediate) {
+                    Toast.makeText(context, if (id == -1L) "Already in queue" else "Saved to queue",
+                        Toast.LENGTH_SHORT).show()
+                    onDismiss()
+                }
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Exception) {
-                Toast.makeText(context, error.message ?: "Cannot save bookmark", Toast.LENGTH_LONG).show()
+                withContext(Dispatchers.Main.immediate) {
+                    Toast.makeText(context, error.message ?: "Cannot save bookmark", Toast.LENGTH_LONG).show()
+                }
             } finally {
                 saving = false
             }

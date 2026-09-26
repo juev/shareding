@@ -1,0 +1,1 @@
+Reuse pending sync work when saving links, and keep one follow-up for links added while sync is running.

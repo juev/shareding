@@ -39,7 +39,7 @@ class ShareActivity : ComponentActivity() {
                         tags = defaults.defaultTags, unread = defaults.unread,
                         archived = defaults.archived))
                 }
-                runCatching { container.scheduler.enqueueAfterCurrent() }
+                container.scheduler.requestSync()
                 if (id == -1L) "Already in queue" else "Saved to queue"
             } catch (cancel: CancellationException) {
                 throw cancel

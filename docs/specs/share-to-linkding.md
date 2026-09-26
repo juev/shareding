@@ -24,6 +24,7 @@ The app accepts a link from Android's Share menu or its add form, saves it on th
 - R12. About presents the existing launcher icon with the app name and short description above its compact version and link rows.
 - R13. Settings offers an optional HTTP proxy with separate host and port fields and optional Basic username/password. Invalid enabled proxy settings fail visibly without changing saved settings. The password is encrypted at rest. Turning the proxy off restores direct routing.
 - R14. With a proxy enabled, Test Connection, tag suggestions, queued bookmark delivery, Add Bookmark Fetch, and background title fetching use the proxy. A failed proxy does not cause a direct request to either origin. Existing network selection, HTTPS certificate validation, and redirect/token protections remain in effect.
+- R15. Repeated saves while sync is waiting must reuse that pending WorkManager job. If sync is running, schedule at most one successor so a link saved after its final queue read still gets processed. Do not cancel in-flight delivery.
 
 ## Invariants and compatibility
 
@@ -39,7 +40,7 @@ The app accepts a link from Android's Share menu or its add form, saves it on th
 
 Kotlin and Jetpack Compose provide the Android UI; Room stores the queue; WorkManager runs durable background sync with a network constraint and retries. Its `NetworkRequest` requires the `INTERNET` capability, but not `VALIDATED` or `NOT_VPN`: Wi-Fi without public internet validation and VPN remain candidates. The worker reads Room entries in creation order, tries available networks, and checks linkding through `GET /api/tags/`. The API token is stored separately from the queue using Android Keystore protection. Android Network Security Config allows HTTP for arbitrary server addresses; the app sends the token only to the configured origin.
 
-App startup keeps an existing sync job. Sharing, saving, and manual sync append a follow-up WorkManager job, so a request arriving while the worker finishes still gets a run without canceling an in-flight request. A follow-up behind a retry waits for that retry to succeed.
+App startup keeps an existing sync job. Sharing, saving, and manual sync reuse an enqueued or blocked job. If only a running job remains, they add one successor; if no job remains, they schedule a new one. Scheduling decisions are serialized and wait for WorkManager to persist the request. This catches a link saved after the running worker's final queue read without canceling an in-flight request. A successor behind a retry waits for that retry to succeed.
 
 For R10, the Settings Save action applies to the current form draft and remains visible below the scrollable sections. Tag suggestions use the saved server URL and token, follow the existing LAN/VPN network selection behavior, and request each page from the configured origin. An unavailable tag list leaves free-text entry usable.
 
@@ -48,7 +49,8 @@ For R11–R14, HTML metadata fills the visible bookmark draft. Shared proxy tran
 ## Verification scenarios
 
 - R1, R2: Share a URL without a network or server settings. ShareDing appears in the text Share menu, keeps the sending app visible, saves the entry, shows a short Toast, and sends it after network access and server settings become available. Sharing invalid text leaves the queue unchanged.
-- R3, R6: Return 401/5xx from the API, drop the connection, or stop the worker. The entry remains queued and is removed only after a successful POST. A new link during backoff waits for the existing retry. A new sync request adds a follow-up without canceling pending or running work.
+- R3, R6: Return 401/5xx from the API, drop the connection, or stop the worker. The entry remains queued and is removed only after a successful POST. A new link during backoff waits for the existing retry.
+- R15: Save 50 links while sync is waiting for a network: one unfinished request remains. Save links while sync is running: one successor remains blocked without canceling the running job. After it finishes, the successor processes any link it missed.
 - R2, R9: Reach a linkding server using HTTP or HTTPS only through LAN/VPN. Delivery works without public internet validation; HTTP shows a warning.
 - R4, R5: The add form, Queue, and Settings perform their actions and show the agreed states in Light/Dark themes.
 - R7: Cancel removal and keep the entry; confirm removal and delete only the selected entry.
