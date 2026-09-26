@@ -12,6 +12,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import org.evsyukov.shareding.network.ProxyConfig
 
 data class Settings(
     val serverUrl: String = "",
@@ -21,12 +22,17 @@ data class Settings(
     val lastSync: Long = 0,
     val lastError: String = "",
     val hasToken: Boolean = false,
+    val proxyEnabled: Boolean = false,
+    val proxyHost: String = "",
+    val proxyPort: Int = 8080,
+    val proxyUsername: String = "",
+    val hasProxyPassword: Boolean = false,
 )
 
 class SettingsStore(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
     private val secrets: SharedPreferences = context.getSharedPreferences("secrets", Context.MODE_PRIVATE)
-    private val tokenCipher = TokenCipher()
+    private val secretCipher = SecretCipher()
     private val mutable = MutableStateFlow(read())
     val state: StateFlow<Settings> = mutable
 
@@ -38,19 +44,52 @@ class SettingsStore(context: Context) {
         lastSync = prefs.getLong("last_sync", 0),
         lastError = prefs.getString("last_error", "") ?: "",
         hasToken = secrets.contains("token"),
+        proxyEnabled = prefs.getBoolean("proxy_enabled", false),
+        proxyHost = prefs.getString("proxy_host", "") ?: "",
+        proxyPort = prefs.getInt("proxy_port", 8080),
+        proxyUsername = prefs.getString("proxy_username", "") ?: "",
+        hasProxyPassword = secrets.contains("proxy_password"),
     )
 
-    fun save(serverUrl: String, token: String?, tags: String, unread: Boolean, archived: Boolean) {
+    fun resolveProxy(enabled: Boolean, host: String, port: String, username: String,
+                     password: String): ProxyConfig {
+        val cleanUsername = username.trim()
+        val secret = password.ifBlank {
+            if (cleanUsername == state.value.proxyUsername) proxyPassword().orEmpty() else ""
+        }
+        return ProxyConfig(enabled, host.trim(), port.toIntOrNull() ?: if (enabled) 0 else 8080,
+            cleanUsername, secret)
+            .validated()
+    }
+
+    fun proxyConfig(): ProxyConfig {
+        val saved = state.value
+        return ProxyConfig(saved.proxyEnabled, saved.proxyHost, saved.proxyPort,
+            saved.proxyUsername, proxyPassword().orEmpty()).validated()
+    }
+
+    fun save(serverUrl: String, token: String?, tags: String, unread: Boolean, archived: Boolean,
+             proxy: ProxyConfig? = null) {
+        val config = (proxy ?: proxyConfig()).validated()
+        if (token != null) {
+            check(secrets.edit().putString("token", secretCipher.encrypt(token)).commit()) { "Cannot save API token" }
+        }
+        val passwordEditor = secrets.edit()
+        if (config.username.isBlank() || config.password.isBlank()) passwordEditor.remove("proxy_password")
+        else passwordEditor.putString("proxy_password", secretCipher.encrypt(config.password))
+        check(passwordEditor.commit()) { "Cannot save proxy password" }
         val editor = prefs.edit().putString("server_url", serverUrl)
             .putString("tags", tags).putBoolean("unread", unread).putBoolean("archived", archived)
+            .putBoolean("proxy_enabled", config.enabled).putString("proxy_host", config.host)
+            .putInt("proxy_port", config.port).putString("proxy_username", config.username)
         check(editor.commit()) { "Cannot save settings" }
-        if (token != null) {
-            check(secrets.edit().putString("token", tokenCipher.encrypt(token)).commit()) { "Cannot save API token" }
-        }
         mutable.value = read()
     }
 
-    fun token(): String? = secrets.getString("token", null)?.let(tokenCipher::decrypt)
+    fun token(): String? = secrets.getString("token", null)?.let(secretCipher::decrypt)
+
+    private fun proxyPassword(): String? =
+        secrets.getString("proxy_password", null)?.let(secretCipher::decrypt)
 
     fun recordSuccess() {
         check(prefs.edit().putLong("last_sync", System.currentTimeMillis())
@@ -64,7 +103,7 @@ class SettingsStore(context: Context) {
     }
 }
 
-private class TokenCipher {
+private class SecretCipher {
     private val alias = "shareding-api-token"
 
     private fun key(): SecretKey {

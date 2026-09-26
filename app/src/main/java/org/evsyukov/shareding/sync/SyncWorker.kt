@@ -7,7 +7,6 @@ import androidx.work.WorkerParameters
 import kotlinx.coroutines.CancellationException
 import org.evsyukov.shareding.ShareDingApplication
 import org.evsyukov.shareding.network.ApiException
-import org.evsyukov.shareding.network.TitleFetcher
 
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = try {
@@ -31,8 +30,10 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             return Result.success()
         } ?: return Result.success()
         if (dao.count() == 0) return Result.success()
-        val selectedNetwork = try {
-            container.networkSelector.checkAndSelect(settings.serverUrl, token, network)
+        val (proxy, selectedNetwork) = try {
+            val savedProxy = container.settings.proxyConfig()
+            savedProxy to container.networkSelector.checkAndSelect(settings.serverUrl, token,
+                network, savedProxy)
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (error: Exception) {
@@ -49,7 +50,8 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             for (bookmark in batch) {
                 if (isStopped) return Result.retry()
                 val title = if (bookmark.title.isBlank() && !bookmark.metadataFetched) {
-                    try { TitleFetcher().fetch(bookmark.url).orEmpty() }
+                    try { container.networkSelector.fetchPageMetadata(bookmark.url, selectedNetwork, proxy)
+                        ?.title.orEmpty() }
                     catch (cancel: CancellationException) { throw cancel }
                     catch (_: Exception) { "" }
                 } else bookmark.title
@@ -57,7 +59,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                 if (title.isNotBlank() && bookmark.title.isBlank()) dao.updateTitleIfEmpty(bookmark.id, title)
                 dao.markSyncing(bookmark.id)
                 try {
-                    container.api.send(settings.serverUrl, token, bookmark.copy(title = title), selectedNetwork)
+                    container.api.send(settings.serverUrl, token, bookmark.copy(title = title), selectedNetwork, proxy)
                     dao.delete(bookmark.id)
                     runCatching { container.settings.recordSuccess() }
                 } catch (cancel: CancellationException) {

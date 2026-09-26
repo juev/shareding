@@ -20,8 +20,8 @@ android {
         applicationId = "org.evsyukov.shareding"
         minSdk = 28
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.1.4"
+        versionCode = 8
+        versionName = "0.1.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -64,6 +64,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
 }
@@ -94,6 +95,9 @@ dependencies {
 
     implementation("androidx.work:work-runtime-ktx:2.12.0")
     implementation("com.google.code.gson:gson:2.13.2")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jsoup:jsoup:1.23.2")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")

@@ -1,0 +1,1 @@
+Fetch page title, description, and tags when adding a bookmark. Add an optional HTTP proxy for linkding and page requests. Show the app icon in About. Keep background sync jobs running when new links arrive.

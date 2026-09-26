@@ -28,16 +28,18 @@ These screens were captured on an Android 16 emulator with example links in the 
 
 | Queue | Add Bookmark | Settings |
 | --- | --- | --- |
-| <a href="docs/images/queue.png"><img src="docs/images/queue.png" alt="Queue with two pending bookmarks and status chips" width="200"></a> | <a href="docs/images/add-bookmark.png"><img src="docs/images/add-bookmark.png" alt="Full-screen Add Bookmark form with URL, title, description and tags" width="200"></a> | <a href="docs/images/settings.png"><img src="docs/images/settings.png" alt="Grouped settings for linkding, bookmark defaults and sync" width="200"></a> |
+| <a href="docs/images/queue.png"><img src="docs/images/queue.png" alt="Queue with two pending bookmarks and status chips" width="200"></a> | <a href="docs/images/add-bookmark.png"><img src="docs/images/add-bookmark.png" alt="Add Bookmark form with URL, title, description, tags, and Fetch page details" width="200"></a> | <a href="docs/images/settings.png"><img src="docs/images/settings.png" alt="Settings with a proxy switch, bookmark defaults, and sync controls" width="200"></a> |
 
 ## Quick start
 
 1. Install the APK using [Obtainium](https://github.com/ImranR98/Obtainium) or download it from [Releases](https://github.com/juev/shareding/releases). See [Install and update](#install-and-update) for details.
 2. In Settings, enter your linkding server URL and API token, then tap **Save settings** at the bottom. Use **Test Connection** to check the server. HTTPS is recommended; HTTP is also supported for servers on a trusted LAN or VPN.
-3. Open a browser's Share menu and select **ShareDing**. It returns to the browser after a short confirmation without opening the main app screen. You can also tap `+` in Queue to add a link manually. The full-screen form accepts a URL, title, description, and tags; **Fetch title** can fill in the page title.
+3. Open a browser's Share menu and select **ShareDing**. It returns to the browser after a short confirmation without opening the main app screen. You can also tap `+` in Queue to add a link manually. The full-screen form accepts a URL, title, description, and tags; **Fetch page details** fills available title, description, and keyword tags without replacing text you have entered.
 4. Check Queue for waiting, sending, or failed bookmarks. Failed entries have a **Retry** action; **Sync Now** in Settings requests another attempt. Removing an entry requires confirmation.
 
 Settings also lets you set default tags and choose whether new bookmarks are marked unread or archived. Enter multiple tags with commas, for example `reading, work notes`, then tap **Save settings**. With a configured connection, existing linkding tags appear as suggestions while you type in Settings or Add Bookmark. You can still enter new tags and save while the server is offline.
+
+To route app requests through an HTTP proxy, turn on **Use proxy** in Settings and enter its host and port. Username and password are optional. **Test Connection** uses the proxy settings currently shown in the form, so you can check them before saving. When enabled, the proxy handles linkding requests and page-detail fetches. If it is unavailable, ShareDing does not fall back to a direct request. Proxy passwords are encrypted with Android Keystore; HTTP proxy authentication sends credentials to the proxy without TLS, so use a trusted network.
 
 Settings shows the queue count, last successful sync, latest error, and an inline Test Connection result. The API token is encrypted using a key held in Android Keystore. If you use HTTP, Settings warns that the token and bookmark data are sent without TLS.
 

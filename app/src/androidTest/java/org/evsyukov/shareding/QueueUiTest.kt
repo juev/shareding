@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -17,6 +18,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.Bookmark
+import org.evsyukov.shareding.data.SettingsStore
+import org.evsyukov.shareding.network.ProxyConfig
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -26,12 +29,26 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
+import org.junit.Before
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class QueueUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    @Before fun startWithoutProxy() {
+        val store = (compose.activity.application as ShareDingApplication).container.settings
+        store.save(store.state.value.serverUrl, null, store.state.value.defaultTags,
+            store.state.value.unread, store.state.value.archived, ProxyConfig())
+    }
+
+    @After fun removeProxy() {
+        val store = (compose.activity.application as ShareDingApplication).container.settings
+        store.save(store.state.value.serverUrl, null, store.state.value.defaultTags,
+            store.state.value.unread, store.state.value.archived, ProxyConfig())
+    }
 
     @Test fun deletingBookmarkRequiresConfirmation() {
         val app = compose.activity.application as ShareDingApplication
@@ -104,6 +121,64 @@ class QueueUiTest {
             runBlocking { app.container.db.bookmarks().findByUrl(url) != null }
         }
         assertEquals("local, work notes", runBlocking { app.container.db.bookmarks().findByUrl(url)?.tags })
+    }
+
+    @Test fun fetchPageDetailsThroughSavedProxyFillsAvailableFields() {
+        MockWebServer().use { proxy ->
+            proxy.enqueue(MockResponse().addHeader("Content-Type", "text/html")
+                .setBody("<title>Fetched title</title><meta name='description' content='Fetched summary'>" +
+                    "<meta name='keywords' content='reading, research'>"))
+            val app = compose.activity.application as ShareDingApplication
+            val url = "http://page.invalid/article"
+            app.container.settings.save("", null, "", true, false,
+                ProxyConfig(true, proxy.hostName, proxy.port))
+            runBlocking { withContext(Dispatchers.IO) { app.container.db.clearAllTables() } }
+            compose.onNodeWithText("Add bookmark").performClick()
+            compose.onNodeWithText("URL").performTextInput(url)
+            compose.onNode(hasScrollAction()).performScrollToNode(hasText("Fetch page details"))
+            compose.onNodeWithText("Fetch page details").performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodes(hasText("Fetched title")).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("Fetched summary").assertIsDisplayed()
+            compose.onNodeWithText("reading, research").assertIsDisplayed()
+            compose.onNodeWithText("Save bookmark").performClick()
+            compose.waitUntil(5_000) {
+                runBlocking { app.container.db.bookmarks().findByUrl(url) != null }
+            }
+            val saved = runBlocking { app.container.db.bookmarks().findByUrl(url) }
+            assertEquals("Fetched title", saved?.title)
+            assertEquals("Fetched summary", saved?.description)
+            assertEquals("reading, research", saved?.tags)
+            assertEquals(1, proxy.requestCount)
+        }
+    }
+
+    @Test fun proxyFormValidatesAndSavesCredentials() {
+        val app = compose.activity.application as ShareDingApplication
+        app.container.settings.save("", null, "", true, false, ProxyConfig())
+        compose.onNodeWithText("Settings").performClick()
+        compose.onNodeWithText("Use proxy").performClick()
+        compose.onNodeWithText("Proxy host").performTextInput("https://proxy.example")
+        compose.onNodeWithText("Proxy port").performTextClearance()
+        compose.onNodeWithText("Proxy port").performTextInput("8080")
+        compose.onNodeWithText("Save settings").performClick()
+        compose.onNodeWithText("Enter a proxy host without a scheme or path").assertIsDisplayed()
+        assertEquals(false, app.container.settings.state.value.proxyEnabled)
+        compose.onNodeWithText("Proxy host").performTextClearance()
+        compose.onNodeWithText("Proxy host").performTextInput("proxy.example")
+        compose.onNodeWithText("Proxy username (optional)").performTextInput("alice")
+        compose.onNodeWithText("Proxy password (optional)").performTextInput("secret")
+        compose.onNodeWithText("Save settings").performClick()
+        compose.waitUntil(5_000) { app.container.settings.state.value.proxyEnabled }
+        assertEquals("proxy.example", app.container.settings.state.value.proxyHost)
+        assertEquals(8080, app.container.settings.state.value.proxyPort)
+        assertTrue(app.container.settings.state.value.hasProxyPassword)
+        assertEquals(ProxyConfig(true, "proxy.example", 8080, "alice", "secret"),
+            SettingsStore(app).proxyConfig())
+        val stored = app.getSharedPreferences("secrets", android.content.Context.MODE_PRIVATE)
+            .getString("proxy_password", null)
+        assertTrue(stored != null && stored != "secret")
     }
 
     @Test fun connectionFailureRemainsVisibleInSettings() {
@@ -212,6 +287,8 @@ class QueueUiTest {
         compose.onNodeWithText("Settings").performClick()
         val activity = compose.activity
         val info = activity.packageManager.getPackageInfo(activity.packageName, 0)
+        compose.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("ShareDing icon"))
+        compose.onNodeWithContentDescription("ShareDing icon").assertIsDisplayed()
         compose.onNode(hasScrollAction()).performScrollToNode(
             hasText("${info.versionName} (${info.longVersionCode})"))
         compose.onNodeWithText("${info.versionName} (${info.longVersionCode})").assertIsDisplayed()

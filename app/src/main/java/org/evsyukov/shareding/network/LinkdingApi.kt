@@ -4,11 +4,13 @@ import android.net.Network
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
 import org.evsyukov.shareding.data.Bookmark
 
 object Urls {
@@ -60,18 +62,20 @@ object TagNames {
 
 class ApiException(val code: Int, message: String) : Exception(message)
 
-class LinkdingApi {
-    suspend fun check(server: String, token: String, network: Network? = null) = withContext(Dispatchers.IO) {
-        request(endpoint(server, "api/tags/"), token, "GET", null, network)
+class LinkdingApi(private val proxyProvider: () -> ProxyConfig = { ProxyConfig() }) {
+    suspend fun check(server: String, token: String, network: Network? = null,
+                      proxy: ProxyConfig? = null) = withContext(Dispatchers.IO) {
+        request(endpoint(server, "api/tags/"), token, "GET", null, network, proxy)
     }
 
-    suspend fun listTags(server: String, token: String, network: Network? = null): List<String> =
+    suspend fun listTags(server: String, token: String, network: Network? = null,
+                         proxy: ProxyConfig? = null): List<String> =
         withContext(Dispatchers.IO) {
             val tags = mutableListOf<String>()
             var offset = 0
             while (true) {
                 val response = request(endpoint(server, "api/tags/?limit=100&offset=$offset"),
-                    token, "GET", null, network, readBody = true)
+                    token, "GET", null, network, proxy, readBody = true)
                     ?: error("Empty tag response")
                 val page = JsonParser.parseString(response).asJsonObject
                 val results = page.getAsJsonArray("results")
@@ -87,7 +91,8 @@ class LinkdingApi {
             tags.distinct().sortedBy { it.lowercase() }
         }
 
-    suspend fun send(server: String, token: String, bookmark: Bookmark, network: Network? = null) =
+    suspend fun send(server: String, token: String, bookmark: Bookmark, network: Network? = null,
+                     proxy: ProxyConfig? = null) =
         withContext(Dispatchers.IO) {
             val json = JsonObject().apply {
                 addProperty("url", bookmark.url)
@@ -100,64 +105,27 @@ class LinkdingApi {
                 addProperty("unread", bookmark.unread)
                 addProperty("is_archived", bookmark.archived)
             }
-            request(endpoint(server, "api/bookmarks/"), token, "POST", json.toString(), network)
+            request(endpoint(server, "api/bookmarks/"), token, "POST", json.toString(), network, proxy)
         }
 
     private fun endpoint(server: String, path: String): URL = Urls.server(server).resolve(path).toURL()
 
     private fun request(url: URL, token: String, method: String, body: String?, network: Network?,
+                        proxy: ProxyConfig?,
                         readBody: Boolean = false): String? {
-        val connection = ((network?.openConnection(url) ?: url.openConnection()) as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = 10_000
-            readTimeout = 15_000
-            instanceFollowRedirects = false
-            setRequestProperty("Authorization", "Token $token")
-            setRequestProperty("Accept", "application/json")
-            if (body != null) {
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            }
-        }
-        try {
-            if (body != null) connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            val code = connection.responseCode
+        val config = proxy ?: proxyProvider()
+        val request = Request.Builder().url(url)
+            .header("Authorization", "Token $token")
+            .header("Accept", "application/json")
+            .method(method, body?.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+        ProxyHttpClient.create(config, network, 10, 15).newCall(request).execute().use { response ->
+            val code = response.code
             if (code !in 200..299) {
+                if (code == 407 && config.enabled) throw ApiException(code, "Proxy authentication failed")
                 throw ApiException(code, "linkding returned HTTP $code")
             }
-            return connection.inputStream.use { stream ->
-                if (readBody) stream.bufferedReader().readText() else null
-            }
-        } finally {
-            connection.disconnect()
-        }
-    }
-}
-
-class TitleFetcher {
-    suspend fun fetch(url: String): String? = withContext(Dispatchers.IO) {
-        val connection = Urls.parse(url).toURL().openConnection() as HttpURLConnection
-        connection.connectTimeout = 5_000
-        connection.readTimeout = 5_000
-        connection.instanceFollowRedirects = false
-        try {
-            if (connection.responseCode !in 200..299) return@withContext null
-            val type = connection.contentType ?: ""
-            if (!type.contains("text/html", true)) return@withContext null
-            val html = connection.inputStream.bufferedReader().use { reader ->
-                val buffer = CharArray(4096)
-                val result = StringBuilder()
-                while (result.length < 131_072) {
-                    val size = reader.read(buffer, 0, minOf(buffer.size, 131_072 - result.length))
-                    if (size < 0) break
-                    result.append(buffer, 0, size)
-                }
-                result.toString()
-            }
-            Regex("<title[^>]*>(.*?)</title>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-                .find(html)?.groupValues?.get(1)?.replace(Regex("\\s+"), " ")?.trim()?.take(200)
-        } finally {
-            connection.disconnect()
+            return if (readBody) response.body?.string() else null
         }
     }
 }

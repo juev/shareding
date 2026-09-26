@@ -13,9 +13,13 @@ import java.util.concurrent.TimeUnit
 class SyncScheduler(context: Context) {
     private val workManager = WorkManager.getInstance(context)
 
-    fun enqueue(urgent: Boolean = false) {
-        workManager.enqueueUniqueWork("linkding-sync",
-            if (urgent) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, newRequest())
+    fun ensureScheduled() {
+        workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.KEEP, newRequest())
+    }
+
+    fun enqueueAfterCurrent() {
+        workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.APPEND_OR_REPLACE,
+            newRequest())
     }
 
     internal fun newRequest(): OneTimeWorkRequest = OneTimeWorkRequestBuilder<SyncWorker>()

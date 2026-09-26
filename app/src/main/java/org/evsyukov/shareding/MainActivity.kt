@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
@@ -70,6 +71,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -86,7 +88,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.Bookmark
 import org.evsyukov.shareding.data.Settings
-import org.evsyukov.shareding.network.TitleFetcher
 import org.evsyukov.shareding.network.TagNames
 import org.evsyukov.shareding.network.Urls
 
@@ -113,7 +114,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         stopWatchingNetworks = container.networkTracker.subscribe {
-            container.scheduler.enqueue(urgent = true)
+            container.scheduler.ensureScheduled()
         }
     }
 
@@ -164,7 +165,7 @@ private fun ShareDingScreen(container: AppContainer) {
     Scaffold(
         topBar = {
             TopAppBar(title = { Text(if (selectedTab == 0) "Queue" else "Settings") }, actions = {
-                if (selectedTab == 0) IconButton(onClick = { container.scheduler.enqueue(urgent = true) }) {
+                if (selectedTab == 0) IconButton(onClick = { container.scheduler.enqueueAfterCurrent() }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Sync now")
                 }
             })
@@ -188,22 +189,27 @@ private fun ShareDingScreen(container: AppContainer) {
             onRetry = { bookmark ->
                 scope.launch {
                     withContext(Dispatchers.IO) { container.db.bookmarks().markPending(bookmark.id) }
-                    container.scheduler.enqueue(urgent = true)
+                    container.scheduler.enqueueAfterCurrent()
                 }
             },
             onDelete = { deleteTarget = it })
         else SettingsScreen(settings, bookmarks.size, padding, serverTags, tagLoadError,
-            onSave = { server, token, tags, unread, archived ->
+            onSave = { server, token, tags, unread, archived, proxyEnabled, proxyHost, proxyPort,
+                       proxyUsername, proxyPassword ->
                 if (server.isNotBlank()) Urls.server(server)
                 withContext(Dispatchers.IO) {
-                    container.settings.save(server.trim(), token, tags.trim(), unread, archived)
+                    val proxy = container.settings.resolveProxy(proxyEnabled, proxyHost, proxyPort,
+                        proxyUsername, proxyPassword)
+                    container.settings.save(server.trim(), token, tags.trim(), unread, archived, proxy)
                 }
-                container.scheduler.enqueue(urgent = true)
+                container.scheduler.enqueueAfterCurrent()
             },
-            onTest = { server, token ->
+            onTest = { server, token, proxyEnabled, proxyHost, proxyPort, proxyUsername, proxyPassword ->
                 val actualToken = token.ifBlank { container.settings.token().orEmpty() }
-                container.networkSelector.checkAndSelect(server, actualToken)
-            }, onSync = { container.scheduler.enqueue(urgent = true) },
+                val proxy = container.settings.resolveProxy(proxyEnabled, proxyHost, proxyPort,
+                    proxyUsername, proxyPassword)
+                container.networkSelector.checkAndSelect(server, actualToken, proxy = proxy)
+            }, onSync = { container.scheduler.enqueueAfterCurrent() },
             onRefreshTags = { tagRefresh++ })
     }
     deleteTarget?.let { target ->
@@ -320,6 +326,7 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
     var title by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
     var tags by rememberSaveable { mutableStateOf("") }
+    var metadataStatus by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     BackHandler { if (!saving) onDismiss() }
@@ -335,7 +342,7 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
                         description = description.trim(), tags = TagNames.combine(defaults.defaultTags, tags),
                         unread = defaults.unread, archived = defaults.archived))
                 }
-                if (id != -1L) runCatching { container.scheduler.enqueue(urgent = true) }
+                if (id != -1L) runCatching { container.scheduler.enqueueAfterCurrent() }
                 Toast.makeText(context, if (id == -1L) "Already in queue" else "Saved to queue",
                     Toast.LENGTH_SHORT).show()
                 onDismiss()
@@ -365,25 +372,46 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
             .padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Save a link now; ShareDing will send it when linkding is available.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(url, { url = it }, modifier = Modifier.fillMaxWidth(),
+            OutlinedTextField(url, { url = it; metadataStatus = null }, modifier = Modifier.fillMaxWidth(),
                 label = { Text("URL") }, singleLine = true)
             OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(),
                 label = { Text("Title") })
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = {
-                    scope.launch {
-                        busy = true
-                        title = runCatching { TitleFetcher().fetch(url).orEmpty() }.getOrDefault("")
-                        busy = false
-                    }
-                }, enabled = !busy) { Text("Fetch title") }
-                if (busy) CircularProgressIndicator(Modifier.size(20.dp))
-            }
             OutlinedTextField(description, { description = it }, modifier = Modifier.fillMaxWidth(),
                 label = { Text("Description") })
             TagInput(tags, { tags = it }, "Tags", availableTags,
                 "Comma-separated: reading, work notes. Defaults are added automatically.",
                 tagLoadError, canRefresh = canRefreshTags, onRefreshTags = onRefreshTags)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = {
+                    scope.launch {
+                        busy = true
+                        metadataStatus = null
+                        val requestedUrl = url
+                        try {
+                            val found = container.networkSelector.fetchPageMetadata(requestedUrl)
+                            if (url != requestedUrl) metadataStatus = "URL changed; fetch details again"
+                            else if (found == null) metadataStatus = "No page details found"
+                            else {
+                                val filled = found.fillEmpty(title, description, tags)
+                                title = filled.title
+                                description = filled.description
+                                tags = filled.tags
+                                metadataStatus = if (found.title.isBlank() && found.description.isBlank() &&
+                                    found.tags.isBlank()) "No page details found" else "Page details loaded"
+                            }
+                        } catch (cancel: CancellationException) {
+                            throw cancel
+                        } catch (error: Exception) {
+                            metadataStatus = "Could not fetch page details: ${error.message ?: "Unknown error"}"
+                        } finally {
+                            busy = false
+                        }
+                    }
+                }, enabled = !busy) { Text("Fetch page details") }
+                if (busy) CircularProgressIndicator(Modifier.size(20.dp).padding(start = 8.dp))
+            }
+            metadataStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
 }
@@ -425,8 +453,10 @@ private fun TagInput(value: String, onValueChange: (String) -> Unit, label: Stri
 @Composable
 private fun SettingsScreen(settings: Settings, queueCount: Int, padding: PaddingValues,
                            availableTags: List<String>, tagLoadError: Boolean,
-                           onSave: suspend (String, String?, String, Boolean, Boolean) -> Unit,
-                           onTest: suspend (String, String) -> Unit, onSync: () -> Unit,
+                           onSave: suspend (String, String?, String, Boolean, Boolean,
+                               Boolean, String, String, String, String) -> Unit,
+                           onTest: suspend (String, String, Boolean, String, String, String, String) -> Unit,
+                           onSync: () -> Unit,
                            onRefreshTags: () -> Unit) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -439,6 +469,11 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
     var tags by rememberSaveable(settings.defaultTags) { mutableStateOf(settings.defaultTags) }
     var unread by rememberSaveable(settings.unread) { mutableStateOf(settings.unread) }
     var archived by rememberSaveable(settings.archived) { mutableStateOf(settings.archived) }
+    var proxyEnabled by rememberSaveable(settings.proxyEnabled) { mutableStateOf(settings.proxyEnabled) }
+    var proxyHost by rememberSaveable(settings.proxyHost) { mutableStateOf(settings.proxyHost) }
+    var proxyPort by rememberSaveable(settings.proxyPort) { mutableStateOf(settings.proxyPort.toString()) }
+    var proxyUsername by rememberSaveable(settings.proxyUsername) { mutableStateOf(settings.proxyUsername) }
+    var proxyPassword by rememberSaveable { mutableStateOf("") }
     var testStatus by rememberSaveable { mutableStateOf<String?>(null) }
     var testFailed by rememberSaveable { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
@@ -446,7 +481,16 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
     var saving by remember { mutableStateOf(false) }
     var saveStatus by rememberSaveable { mutableStateOf<String?>(null) }
     var saveFailed by rememberSaveable { mutableStateOf(false) }
-    val savedConnectionIsCurrent = server.trim() == settings.serverUrl && token.isBlank()
+    val savedConnectionIsCurrent = server.trim() == settings.serverUrl && token.isBlank() &&
+        proxyEnabled == settings.proxyEnabled && proxyHost.trim() == settings.proxyHost &&
+        proxyPort == settings.proxyPort.toString() && proxyUsername.trim() == settings.proxyUsername &&
+        proxyPassword.isBlank()
+    val proxyChanged: () -> Unit = {
+        saveStatus = null
+        testVersion++
+        testStatus = null
+        testing = false
+    }
     Column(Modifier.fillMaxSize().padding(padding)) {
     LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -474,6 +518,44 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
                 }, modifier = Modifier.fillMaxWidth(),
                     label = { Text(if (settings.hasToken) "API token (leave empty to keep current)" else "API token") },
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+                Row(Modifier.fillMaxWidth().clickable {
+                    proxyEnabled = !proxyEnabled
+                    proxyChanged()
+                }, verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Use proxy")
+                    Switch(proxyEnabled, { proxyEnabled = it; proxyChanged() })
+                }
+                if (proxyEnabled) {
+                    Text("HTTP proxy for linkding and page details",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(proxyHost, { proxyHost = it; proxyChanged() },
+                        modifier = Modifier.fillMaxWidth(), label = { Text("Proxy host") },
+                        placeholder = { Text("proxy.example") }, singleLine = true)
+                    OutlinedTextField(proxyPort, { proxyPort = it; proxyChanged() },
+                        modifier = Modifier.fillMaxWidth(), label = { Text("Proxy port") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+                    OutlinedTextField(proxyUsername, { proxyUsername = it; proxyChanged() },
+                        modifier = Modifier.fillMaxWidth(), label = { Text("Proxy username (optional)") },
+                        singleLine = true)
+                    OutlinedTextField(proxyPassword, { proxyPassword = it; proxyChanged() },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(if (settings.hasProxyPassword &&
+                            proxyUsername.trim() == settings.proxyUsername)
+                            "Proxy password (leave empty to keep current)" else "Proxy password (optional)") },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        singleLine = true)
+                    Text("Clear the username to remove proxy authentication.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (proxyUsername.isNotBlank()) Text(
+                        "HTTP proxy credentials are sent to the proxy without TLS. Use a trusted network.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error)
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = {
                         val version = ++testVersion
@@ -482,7 +564,8 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
                         testing = true
                         scope.launch {
                             val result = try {
-                                onTest(server, token)
+                                onTest(server, token, proxyEnabled, proxyHost, proxyPort,
+                                    proxyUsername, proxyPassword)
                                 Result.success(Unit)
                             } catch (cancel: CancellationException) {
                                 throw cancel
@@ -537,7 +620,16 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
         }
         item {
             SettingsGroup("About") {
-                Text("ShareDing · linkding bookmark queue")
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Image(painterResource(R.mipmap.ic_launcher), contentDescription = "ShareDing icon",
+                        modifier = Modifier.size(64.dp))
+                    Column {
+                        Text("ShareDing", style = MaterialTheme.typography.titleLarge)
+                        Text("linkding bookmark queue", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 Column {
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -571,8 +663,10 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
                     if (saving) return@launch
                     saving = true
                     try {
-                        onSave(server, token.takeIf { it.isNotBlank() }, tags, unread, archived)
+                        onSave(server, token.takeIf { it.isNotBlank() }, tags, unread, archived,
+                            proxyEnabled, proxyHost, proxyPort, proxyUsername, proxyPassword)
                         token = ""
+                        proxyPassword = ""
                         focusManager.clearFocus()
                         keyboard?.hide()
                         saveFailed = false
