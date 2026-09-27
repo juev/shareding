@@ -15,9 +15,9 @@ Repo: https://github.com/juev/shareding.git
 Binaries: https://github.com/juev/shareding/releases/download/v%v/ShareDing-v%v.apk
 
 Builds:
-  - versionName: 0.1.4
-    versionCode: 7
-    commit: db30df3c5bdec12860e1d03b8b2b1534561045e7
+  - versionName: 0.1.7
+    versionCode: 10
+    commit: 100062992f9cb14b6a6e3962471aaa292a7e1434
     subdir: app
     gradle:
       - yes
@@ -26,5 +26,5 @@ AllowedAPKSigningKeys: 3693ca80cbfc0d7b30a403f49c25637d78b12d1a196bdec398f413fb5
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9]+\.[0-9]+\.[0-9]+$
-CurrentVersion: 0.1.4
-CurrentVersionCode: 7
+CurrentVersion: 0.1.7
+CurrentVersionCode: 10
