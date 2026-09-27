@@ -61,11 +61,11 @@ interface BookmarkDao {
     @Query("UPDATE bookmarks SET status = 'pending' WHERE status = 'syncing'")
     suspend fun recoverInterrupted()
 
-    @Query("""UPDATE bookmarks SET
-        title = CASE WHEN title = '' THEN :title ELSE title END,
-        description = CASE WHEN description = '' THEN :description ELSE description END,
-        metadataFetched = 1 WHERE id = :id""")
-    suspend fun fillMissingMetadata(id: Long, title: String, description: String)
+    @Query("UPDATE bookmarks SET title = :title, metadataFetched = 1 WHERE id = :id AND title = ''")
+    suspend fun updateTitleIfEmpty(id: Long, title: String)
+
+    @Query("UPDATE bookmarks SET metadataFetched = 1 WHERE id = :id")
+    suspend fun markMetadataFetched(id: Long)
 }
 
 @Database(entities = [Bookmark::class], version = 1, exportSchema = false)

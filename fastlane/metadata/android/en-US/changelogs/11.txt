@@ -1,0 +1,1 @@
+Send shared links with the browser title without fetching the page for a description. Links without a title can still fetch one during background sync.
