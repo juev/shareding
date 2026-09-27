@@ -22,6 +22,8 @@ Saving a link should not depend on whether your linkding server is reachable at 
 
 The queue survives app restarts and device reboots. Delivery is at least once: if linkding accepts a request but the response is lost, ShareDing may send the same URL again. Linkding updates an existing bookmark with that URL.
 
+When an app shares a page title, ShareDing saves it with the link. During background sync, it tries to fill a missing description from the page's HTML without replacing the shared title. An unreadable page does not stop the link from reaching linkding.
+
 ## Screenshots
 
 These screens were captured on an Android 16 emulator with example links in the queue. No linkding server or API token was configured.

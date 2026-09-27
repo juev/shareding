@@ -29,6 +29,29 @@ class LinkdingApiTest {
         }
     }
 
+    @Test fun sendsUnicodeJsonAndAlreadyEncodedUrlAsUtf8() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+            val bookmark = Bookmark(
+                url = "https://example.com/%D1%81%D1%82%D1%80%D0%B0%D0%BD%D0%B8%D1%86%D0%B0?q=caf%C3%A9",
+                title = "Заголовок — café 東京",
+                description = "Описание — déjà vu",
+            )
+
+            LinkdingApi().send(server.url("/").toString(), "secret", bookmark)
+
+            val request = server.takeRequest()
+            assertEquals("application/json; charset=utf-8", request.getHeader("Content-Type"))
+            val rawJson = request.body.readUtf8()
+            assertTrue(rawJson.contains("Заголовок — café 東京"))
+            assertTrue(rawJson.contains("Описание — déjà vu"))
+            val body = JsonParser.parseString(rawJson).asJsonObject
+            assertEquals(bookmark.url, body.get("url").asString)
+            assertEquals(bookmark.title, body.get("title").asString)
+            assertEquals(bookmark.description, body.get("description").asString)
+        }
+    }
+
     @Test fun rejectsRedirectWithoutForwardingToken() = runBlocking {
         MockWebServer().use { original ->
             MockWebServer().use { destination ->

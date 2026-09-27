@@ -342,7 +342,8 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
                 val id = withContext(Dispatchers.IO) {
                     container.db.bookmarks().insert(Bookmark(url = validUrl, title = title.trim(),
                         description = description.trim(), tags = TagNames.combine(defaults.defaultTags, tags),
-                        unread = defaults.unread, archived = defaults.archived))
+                        unread = defaults.unread, archived = defaults.archived,
+                        metadataFetched = title.isNotBlank()))
                 }
                 if (id != -1L) container.scheduler.requestSync()
                 withContext(Dispatchers.Main.immediate) {

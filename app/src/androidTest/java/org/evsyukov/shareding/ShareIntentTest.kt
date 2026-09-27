@@ -46,6 +46,28 @@ class ShareIntentTest {
         assertTrue(found)
     }
 
+    @Test fun browserSharePersistsUnicodeTitle() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val url = "https://example.com/browser-${System.nanoTime()}"
+        val title = "Пример страницы — café 東京"
+        val intent = Intent(context, ShareActivity::class.java).apply {
+            action = Intent.ACTION_SEND
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, url)
+            putExtra(Intent.EXTRA_TITLE, title)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+        val dao = (context.applicationContext as ShareDingApplication).container.db.bookmarks()
+        var bookmark: org.evsyukov.shareding.data.Bookmark? = null
+        for (attempt in 0 until 30) {
+            bookmark = dao.findByUrl(url)
+            if (bookmark != null) break
+            delay(100)
+        }
+        assertEquals(title, bookmark?.title)
+    }
+
     @Test fun invalidShareDoesNotEnterQueue() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val dao = (context.applicationContext as ShareDingApplication).container.db.bookmarks()

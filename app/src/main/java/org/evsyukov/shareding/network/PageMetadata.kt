@@ -1,7 +1,7 @@
 package org.evsyukov.shareding.network
 
 import android.net.Network
-import java.io.InputStreamReader
+import java.io.ByteArrayInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -17,8 +17,9 @@ data class PageMetadata(val title: String = "", val description: String = "", va
 }
 
 object PageMetadataParser {
-    fun parse(html: String): PageMetadata {
-        val page = Jsoup.parse(html)
+    fun parse(html: String): PageMetadata = parse(Jsoup.parse(html))
+
+    fun parse(page: Document): PageMetadata {
         val title = (meta(page, "property", "og:title") ?: meta(page, "name", "twitter:title")
             ?: page.title()).trim().take(200)
         val description = (meta(page, "name", "description")
@@ -46,18 +47,18 @@ class PageMetadataFetcher(private val proxyProvider: () -> ProxyConfig = { Proxy
             if (body.contentType()?.type != "text" || body.contentType()?.subtype != "html") {
                 return@withContext null
             }
-            val charset = body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
-            val html = InputStreamReader(body.byteStream(), charset).buffered().use { reader ->
-                val buffer = CharArray(4096)
-                val result = StringBuilder()
-                while (result.length < 131_072) {
-                    val size = reader.read(buffer, 0, minOf(buffer.size, 131_072 - result.length))
-                    if (size < 0) break
-                    result.append(buffer, 0, size)
+            val bytes = ByteArray(131_072)
+            val length = body.byteStream().use { stream ->
+                var count = 0
+                while (count < bytes.size) {
+                    val read = stream.read(bytes, count, bytes.size - count)
+                    if (read < 0) break
+                    count += read
                 }
-                result.toString()
+                count
             }
-            PageMetadataParser.parse(html)
+            val charset = body.contentType()?.charset()?.name()
+            PageMetadataParser.parse(Jsoup.parse(ByteArrayInputStream(bytes, 0, length), charset, url))
         }
     }
 }

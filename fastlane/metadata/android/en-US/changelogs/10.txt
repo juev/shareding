@@ -1,0 +1,1 @@
+Fetch missing page descriptions for links shared from a browser. Preserve shared titles and decode page details using the declared character encoding.

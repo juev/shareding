@@ -1,8 +1,8 @@
 # Sending links to linkding on Android
 
-Status: R1–R14 implemented. Debug/release builds, unit tests, lint, and all 23 instrumentation tests passed on Android 9 and Android 16. A signed 0.1.0 APK upgraded an installed 0.1.0-rc.2 APK without losing a queued link. HTTPS page fetching and Test Connection were checked through a local proxy against a public TLS server. A real VPN has not been tested manually.
+Status: R1–R17 implemented. Debug/release builds, unit tests, lint, and all 31 instrumentation tests passed on Android 9 and Android 16. A signed 0.1.0 APK upgraded an installed 0.1.0-rc.2 APK without losing a queued link. HTTPS page fetching and Test Connection were checked through a local proxy against a public TLS server. A real VPN has not been tested manually.
 
-Sources: the user's requirements and proxy clarification on 2026-09-26, the agreed RFC, and the iOS app in the sibling `share` repository.
+Sources: the user's requirements on 2026-09-26 and 2026-09-27, the agreed RFC, the iOS app in the sibling `share` repository, the observed Chrome share Intent on Android 16, and the [linkding API documentation](https://github.com/sissbruecker/linkding/blob/master/docs/src/content/docs/api.md).
 
 ## Purpose and scope
 
@@ -25,6 +25,8 @@ The app accepts a link from Android's Share menu or its add form, saves it on th
 - R13. Settings offers an optional HTTP proxy with separate host and port fields and optional Basic username/password. Invalid enabled proxy settings fail visibly without changing saved settings. The password is encrypted at rest. Turning the proxy off restores direct routing.
 - R14. With a proxy enabled, Test Connection, tag suggestions, queued bookmark delivery, Add Bookmark Fetch, and background title fetching use the proxy. A failed proxy does not cause a direct request to either origin. Existing network selection, HTTPS certificate validation, and redirect/token protections remain in effect.
 - R15. Repeated saves while sync is waiting must reuse that pending WorkManager job. If sync is running, schedule at most one successor so a link saved after its final queue read still gets processed. Do not cancel in-flight delivery.
+- R16. A shared page keeps the title supplied in `EXTRA_TITLE` or `EXTRA_SUBJECT`. If its description is empty, background sync tries to read the page's HTML description before sending to linkding. This lookup must not delay local saving or block delivery when the page is unavailable. An explicitly entered title or description is not overwritten.
+- R17. Preserve Unicode text and encoded URLs from Android shares through local storage and the UTF-8 linkding JSON request. For fetched HTML, use the HTTP charset when supplied, otherwise detect a declared HTML charset and fall back to UTF-8. Do not decode or normalize URL escapes as text.
 
 ## Invariants and compatibility
 
@@ -46,6 +48,8 @@ For R10, the Settings Save action applies to the current form draft and remains 
 
 For R11–R14, HTML metadata fills the visible bookmark draft. Shared proxy transport settings affect both linkding and page fetches. Separate proxy fields make host and port validation clear; credentials are stored separately from ordinary preferences. A draft proxy can be checked with Test Connection before it is saved.
 
+For R16–R17, Chrome supplies a title but no description in the observed Android 16 share. ShareDing therefore uses its existing page fetcher during background sync for missing description. A completed lookup is recorded with the queued bookmark, so POST retries do not repeat it. The fetch follows the configured proxy and network selection and cannot prevent the bookmark POST. Explicit metadata takes priority over fetched metadata. The URL remains encoded as received; HTML bytes are decoded before parsing, while Intent strings and the API request remain Unicode text.
+
 ## Verification scenarios
 
 - R1, R2: Share a URL without a network or server settings. ShareDing appears in the text Share menu, keeps the sending app visible, saves the entry, shows a short Toast, and sends it after network access and server settings become available. Sharing invalid text leaves the queue unchanged.
@@ -58,6 +62,7 @@ For R11–R14, HTML metadata fills the visible bookmark draft. Shared proxy tran
 - R11: Fetch an HTML page containing title, description, and keywords. Confirm all available fields appear and can be edited before saving. Omitted metadata and a failed request do not clear manual values.
 - R12: Open About and confirm the app icon and identity appear above version and links.
 - R13, R14: Enable a proxy, test and save it, restart the app, then confirm checks, tags, sync, and page fetches traverse the proxy. Disable it and confirm direct routing. An unreachable proxy leaves entries queued and never sends directly to linkding or a page origin.
+- R16, R17: Share a page with a non-ASCII title from Chrome and verify the queued title. Sync against a test page with a declared non-UTF-8 HTML charset and a Unicode description; verify the supplied title remains intact and the linkding POST contains the decoded description. An unreachable page still produces a POST with the saved title.
 
 Automated checks: `./gradlew assembleDebug assembleRelease testDebugUnitTest testReleaseUnitTest lintDebug lintRelease connectedDebugAndroidTest`. URL, metadata, and proxy routing cases are covered in `app/src/test/java/org/evsyukov/shareding/network/`; Room queue, Share Intent, worker, scheduler, and UI cases are covered in `app/src/androidTest/java/org/evsyukov/shareding/`.
 

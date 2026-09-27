@@ -49,17 +49,22 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             if (batch.isEmpty()) return if (failed) Result.retry() else Result.success()
             for (bookmark in batch) {
                 if (isStopped) return Result.retry()
-                val title = if (bookmark.title.isBlank() && !bookmark.metadataFetched) {
-                    try { container.networkSelector.fetchPageMetadata(bookmark.url, selectedNetwork, proxy)
-                        ?.title.orEmpty() }
+                val metadata = if (!bookmark.metadataFetched &&
+                    (bookmark.title.isBlank() || bookmark.description.isBlank())) {
+                    try { container.networkSelector.fetchPageMetadata(bookmark.url, selectedNetwork, proxy) }
                     catch (cancel: CancellationException) { throw cancel }
-                    catch (_: Exception) { "" }
-                } else bookmark.title
-                if (!bookmark.metadataFetched) dao.markMetadataFetched(bookmark.id)
-                if (title.isNotBlank() && bookmark.title.isBlank()) dao.updateTitleIfEmpty(bookmark.id, title)
+                    catch (_: Exception) { null }
+                } else null
+                val enriched = bookmark.copy(
+                    title = bookmark.title.ifBlank { metadata?.title.orEmpty() },
+                    description = bookmark.description.ifBlank { metadata?.description.orEmpty() },
+                )
+                if (!bookmark.metadataFetched) {
+                    dao.fillMissingMetadata(bookmark.id, enriched.title, enriched.description)
+                }
                 dao.markSyncing(bookmark.id)
                 try {
-                    container.api.send(settings.serverUrl, token, bookmark.copy(title = title), selectedNetwork, proxy)
+                    container.api.send(settings.serverUrl, token, enriched, selectedNetwork, proxy)
                     dao.delete(bookmark.id)
                     runCatching { container.settings.recordSuccess() }
                 } catch (cancel: CancellationException) {

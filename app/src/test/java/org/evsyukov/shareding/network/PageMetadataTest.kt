@@ -1,6 +1,7 @@
 package org.evsyukov.shareding.network
 
 import kotlinx.coroutines.runBlocking
+import java.nio.charset.Charset
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
@@ -35,6 +36,26 @@ class PageMetadataTest {
                 PageMetadataFetcher().fetch(server.url("/page").toString()))
             assertNull(PageMetadataFetcher().fetch(server.url("/redirect").toString()))
             assertEquals(2, server.requestCount)
+        }
+    }
+
+    @Test fun honorsHtmlMetaCharsetWhenResponseHeaderOmitsCharset() = runBlocking {
+        MockWebServer().use { server ->
+            val html = "<meta charset='windows-1252'><meta name='description' content='caf\u00e9'>"
+            server.enqueue(MockResponse().addHeader("Content-Type", "text/html")
+                .setBody(okio.Buffer().write(html.toByteArray(Charset.forName("windows-1252")))))
+
+            assertEquals("café", PageMetadataFetcher().fetch(server.url("/page").toString())?.description)
+        }
+    }
+
+    @Test fun httpCharsetTakesPrecedenceOverHtmlMetaCharset() = runBlocking {
+        MockWebServer().use { server ->
+            val html = "<meta charset='utf-8'><meta name='description' content='caf\u00e9'>"
+            server.enqueue(MockResponse().addHeader("Content-Type", "text/html; charset=windows-1252")
+                .setBody(okio.Buffer().write(html.toByteArray(Charset.forName("windows-1252")))))
+
+            assertEquals("café", PageMetadataFetcher().fetch(server.url("/page").toString())?.description)
         }
     }
 }

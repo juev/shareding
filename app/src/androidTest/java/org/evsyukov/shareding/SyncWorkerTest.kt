@@ -14,6 +14,7 @@ import org.evsyukov.shareding.data.Bookmark
 import org.evsyukov.shareding.network.ProxyConfig
 import org.evsyukov.shareding.sync.SyncWorker
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -30,7 +31,8 @@ class SyncWorkerTest {
                 app.container.settings.save(server.url("/").toString(), "test-token", "", true, false,
                     ProxyConfig())
                 repeat(50) { index ->
-                    dao.insert(Bookmark(url = "https://example.com/worker/$index", title = "Item $index"))
+                    dao.insert(Bookmark(url = "https://example.com/worker/$index", title = "Item $index",
+                        metadataFetched = true))
                 }
                 server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
                 repeat(50) { server.enqueue(MockResponse().setResponseCode(201).setBody("{}")) }
@@ -93,7 +95,8 @@ class SyncWorkerTest {
             try {
                 app.container.settings.save(server.url("/").toString(), "test-token", "", true, false,
                     ProxyConfig())
-                dao.insert(Bookmark(url = "https://example.com/worker", title = "Worker test"))
+                dao.insert(Bookmark(url = "https://example.com/worker", title = "Worker test",
+                    metadataFetched = true))
                 assertEquals("test-token", app.container.settings.token())
                 assertEquals(1, dao.count())
                 server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
@@ -110,6 +113,119 @@ class SyncWorkerTest {
                 assertEquals(4, server.requestCount)
                 assertEquals("/api/tags/", server.takeRequest().path)
                 assertEquals("/api/bookmarks/", server.takeRequest().path)
+            } finally {
+                app.container.settings.save("", null, "", true, false, ProxyConfig())
+            }
+        }
+    }
+
+    @Test fun workerFetchesDescriptionThroughProxyAndSendsUtf8Json() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val app = context.applicationContext as ShareDingApplication
+        WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
+        val dao = app.container.db.bookmarks()
+        withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+        MockWebServer().use { proxy ->
+            try {
+                app.container.settings.save("http://linkding.invalid/", "test-token", "", true, false,
+                    ProxyConfig(true, proxy.hostName, proxy.port))
+                val suppliedTitle = "Заголовок браузера — café"
+                dao.insert(Bookmark(url = "http://page.invalid/article", title = suppliedTitle))
+                proxy.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                proxy.enqueue(MockResponse().addHeader("Content-Type", "text/html; charset=utf-8")
+                    .setBody("<meta name='description' content='Описание страницы — 東京'>"))
+                proxy.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+
+                TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+
+                assertEquals(0, dao.count())
+                val requests = (1..3).map { proxy.takeRequest() }
+                assertEquals("GET", requests[0].method)
+                assertEquals("GET", requests[1].method)
+                assertEquals("POST", requests[2].method)
+                assertTrue(requests[1].requestLine.contains("http://page.invalid/article"))
+                val rawJson = requests[2].body.readUtf8()
+                assertTrue(rawJson.contains(suppliedTitle))
+                assertTrue(rawJson.contains("Описание страницы — 東京"))
+                val body = JsonParser.parseString(rawJson).asJsonObject
+                assertEquals(suppliedTitle, body.get("title").asString)
+                assertEquals("Описание страницы — 東京", body.get("description").asString)
+            } finally {
+                app.container.settings.save("", null, "", true, false, ProxyConfig())
+            }
+        }
+    }
+
+    @Test fun metadataFetchFailureDoesNotBlockBookmarkPost() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val app = context.applicationContext as ShareDingApplication
+        WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
+        val dao = app.container.db.bookmarks()
+        withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+        MockWebServer().use { proxy ->
+            try {
+                app.container.settings.save("http://linkding.invalid/", "test-token", "", true, false,
+                    ProxyConfig(true, proxy.hostName, proxy.port))
+                dao.insert(Bookmark(url = "http://page.invalid/unavailable", title = "Supplied title"))
+                proxy.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                proxy.enqueue(MockResponse().setResponseCode(502))
+                proxy.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+
+                TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+
+                assertEquals(0, dao.count())
+                assertEquals("GET", proxy.takeRequest().method)
+                assertEquals("GET", proxy.takeRequest().method)
+                val post = proxy.takeRequest()
+                assertEquals("POST", post.method)
+                val body = JsonParser.parseString(post.body.readUtf8()).asJsonObject
+                assertEquals("Supplied title", body.get("title").asString)
+                assertEquals("", body.get("description").asString)
+            } finally {
+                app.container.settings.save("", null, "", true, false, ProxyConfig())
+            }
+        }
+    }
+
+    @Test fun fetchedDescriptionSurvivesPostRetryWithoutAnotherPageRequest() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val app = context.applicationContext as ShareDingApplication
+        WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
+        val dao = app.container.db.bookmarks()
+        withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+        MockWebServer().use { proxy ->
+            try {
+                app.container.settings.save("http://linkding.invalid/", "test-token", "", true, false,
+                    ProxyConfig(true, proxy.hostName, proxy.port))
+                val url = "http://page.invalid/retry"
+                dao.insert(Bookmark(url = url, title = "Browser title"))
+                proxy.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                proxy.enqueue(MockResponse().addHeader("Content-Type", "text/html")
+                    .setBody("<meta name='description' content='Fetched description'>"))
+                proxy.enqueue(MockResponse().setResponseCode(503))
+
+                TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+
+                val queued = dao.findByUrl(url)
+                assertEquals("Browser title", queued?.title)
+                assertEquals("Fetched description", queued?.description)
+                assertEquals(true, queued?.metadataFetched)
+                assertEquals("failed", queued?.status)
+
+                proxy.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                proxy.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+                TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+
+                assertEquals(0, dao.count())
+                assertEquals(5, proxy.requestCount)
+                assertEquals("GET", proxy.takeRequest().method)
+                assertEquals("GET", proxy.takeRequest().method)
+                assertEquals("POST", proxy.takeRequest().method)
+                assertEquals("GET", proxy.takeRequest().method)
+                val retry = proxy.takeRequest()
+                assertEquals("POST", retry.method)
+                val body = JsonParser.parseString(retry.body.readUtf8()).asJsonObject
+                assertEquals("Fetched description", body.get("description").asString)
             } finally {
                 app.container.settings.save("", null, "", true, false, ProxyConfig())
             }
