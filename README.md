@@ -20,6 +20,8 @@ Saving a link should not depend on whether your linkding server is reachable at 
 3. WorkManager runs sync when a network is available. ShareDing checks the configured linkding server itself, so a server reachable through LAN or VPN does not need public internet access.
 4. After linkding accepts the bookmark, ShareDing removes it from the queue. Connection and server errors leave it queued for another attempt. Retries use exponential backoff starting at 30 seconds; Android may run them later than the scheduled time.
 
+WorkManager also checks for queued links about every 30 minutes when a suitable network is available. This check reads the local queue and restores a missing sync job; it does not contact linkding or reset an existing retry delay. Android may postpone the check to save battery. It can run after the app process has been removed or the phone has rebooted, without opening ShareDing. A user force-stop pauses background work until the app is opened or used from the Share menu.
+
 The queue survives app restarts and device reboots. Delivery is at least once: if linkding accepts a request but the response is lost, ShareDing may send the same URL again. Linkding updates an existing bookmark with that URL.
 
 When an app shares a page title, ShareDing saves and sends it with the link without fetching the page for a description. If no title is supplied, background sync tries to fetch one. An unreadable page does not stop the link from reaching linkding.

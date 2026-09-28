@@ -4,10 +4,13 @@ import android.content.Context
 import android.util.Log
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequest
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkInfo
 import kotlinx.coroutines.CancellationException
@@ -21,8 +24,14 @@ class SyncScheduler(context: Context) {
     private val workManager = WorkManager.getInstance(context)
     private val scheduling = Mutex()
 
-    fun ensureScheduled() {
+    suspend fun ensureScheduled() = withContext(Dispatchers.IO) {
         workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.KEEP, newRequest())
+            .result.get()
+    }
+
+    suspend fun ensureRecoveryScheduled() = withContext(Dispatchers.IO) {
+        workManager.enqueueUniquePeriodicWork("linkding-sync-recovery", ExistingPeriodicWorkPolicy.KEEP,
+            newRecoveryRequest()).result.get()
     }
 
     suspend fun requestSync() {
@@ -47,9 +56,17 @@ class SyncScheduler(context: Context) {
     }
 
     internal fun newRequest(): OneTimeWorkRequest = OneTimeWorkRequestBuilder<SyncWorker>()
-        .setConstraints(Constraints.Builder()
-            .setRequiredNetworkRequest(NetworkRequests.linkdingCandidate(), NetworkType.CONNECTED)
-            .build())
+        .setConstraints(networkConstraints())
         .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+        .build()
+
+    internal fun newRecoveryRequest(): PeriodicWorkRequest =
+        PeriodicWorkRequestBuilder<SyncRecoveryWorker>(30, TimeUnit.MINUTES)
+            .setInitialDelay(30, TimeUnit.MINUTES)
+            .setConstraints(networkConstraints())
+            .build()
+
+    private fun networkConstraints(): Constraints = Constraints.Builder()
+        .setRequiredNetworkRequest(NetworkRequests.linkdingCandidate(), NetworkType.CONNECTED)
         .build()
 }
