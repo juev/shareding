@@ -52,7 +52,7 @@ class SyncSchedulerTest {
         }
     }
 
-    @Test fun appStartupKeepsExistingPendingWork() {
+    @Test fun appStartupKeepsExistingPendingWork() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workManager = WorkManager.getInstance(context)
         workManager.cancelUniqueWork("linkding-sync").result.get()

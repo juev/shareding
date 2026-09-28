@@ -1,8 +1,8 @@
 # Sending links to linkding on Android
 
-Status: R1–R17 implemented. Debug/release builds, unit tests, lint, and all 31 instrumentation tests passed on Android 9 and Android 16. A signed 0.1.0 APK upgraded an installed 0.1.0-rc.2 APK without losing a queued link. HTTPS page fetching and Test Connection were checked through a local proxy against a public TLS server. A real VPN has not been tested manually.
+Status: R1–R18 implemented. WorkManager may delay recovery under Android power restrictions. A real VPN has not been tested manually.
 
-Sources: the user's requirements on 2026-09-26 and 2026-09-27, the agreed RFC, the iOS app in the sibling `share` repository, the observed Chrome share Intent on Android 16, and the [linkding API documentation](https://github.com/sissbruecker/linkding/blob/master/docs/src/content/docs/api.md).
+Sources: the user's requirements on 2026-09-26, 2026-09-27, and 2026-09-28, the agreed RFCs, the iOS app in the sibling `share` repository, the observed Chrome share Intent on Android 16, and the [linkding API documentation](https://github.com/sissbruecker/linkding/blob/master/docs/src/content/docs/api.md).
 
 ## Purpose and scope
 
@@ -27,6 +27,7 @@ The app accepts a link from Android's Share menu or its add form, saves it on th
 - R15. Repeated saves while sync is waiting must reuse that pending WorkManager job. If sync is running, schedule at most one successor so a link saved after its final queue read still gets processed. Do not cancel in-flight delivery.
 - R16. A shared page keeps the title supplied in `EXTRA_TITLE` or `EXTRA_SUBJECT` and sends it with the URL without fetching the page for a description. If no title was supplied, background sync may fetch the page title. A failed title lookup must not block delivery. Explicitly entered descriptions are preserved.
 - R17. Preserve Unicode text and encoded URLs from Android shares through local storage and the UTF-8 linkding JSON request. For fetched HTML, use the HTTP charset when supplied, otherwise detect a declared HTML charset and fall back to UTF-8. Do not decode or normalize URL escapes as text.
+- R18. Register one persistent recovery check with a 30-minute WorkManager interval and a CONNECTED network constraint that accepts LAN and VPN networks without public internet validation. It reads the local queue and, only when links and server settings are present, restores a missing one-time sync request. It does not send links, replace pending or running work, append a successor, or shorten retry backoff. App startup and new-network callbacks also skip normal sync when the queue or connection settings are empty. Android may delay the check to save power; no app screen or continuously running service is required.
 
 ## Invariants and compatibility
 
@@ -42,7 +43,9 @@ The app accepts a link from Android's Share menu or its add form, saves it on th
 
 Kotlin and Jetpack Compose provide the Android UI; Room stores the queue; WorkManager runs durable background sync with a network constraint and retries. Its `NetworkRequest` requires the `INTERNET` capability, but not `VALIDATED` or `NOT_VPN`: Wi-Fi without public internet validation and VPN remain candidates. The worker reads Room entries in creation order, tries available networks, and checks linkding through `GET /api/tags/`. The API token is stored separately from the queue using Android Keystore protection. Android Network Security Config allows HTTP for arbitrary server addresses; the app sends the token only to the configured origin.
 
-App startup keeps an existing sync job. Sharing, saving, and manual sync reuse an enqueued or blocked job. If only a running job remains, they add one successor; if no job remains, they schedule a new one. Scheduling decisions are serialized and wait for WorkManager to persist the request. This catches a link saved after the running worker's final queue read without canceling an in-flight request. A successor behind a retry waits for that retry to succeed.
+App startup and new-network callbacks check the queue before ensuring one normal sync job exists. Sharing, saving, and manual sync reuse an enqueued or blocked job. If only a running job remains, they add one successor; if no job remains, they schedule a new one. Scheduling decisions wait for WorkManager to persist the request. This catches a link saved after the running worker's final queue read without canceling an in-flight request. A successor behind a retry waits for that retry to succeed.
+
+The separate periodic recovery worker starts after an initial 30-minute delay and repeats at a 30-minute WorkManager interval while its network constraint is met. It only checks Room and server settings, then uses KEEP to restore an absent normal sync request. Existing pending retries and running uploads remain untouched. WorkManager can launch the app process for this check after ordinary process death or reboot; Android can delay it, and a user force-stop prevents background work until user interaction.
 
 For R10, the Settings Save action applies to the current form draft and remains visible below the scrollable sections. Tag suggestions use the saved server URL and token, follow the existing LAN/VPN network selection behavior, and request each page from the configured origin. An unavailable tag list leaves free-text entry usable.
 
@@ -55,6 +58,7 @@ For R16–R17, Chrome supplies a title but no description in the observed Androi
 - R1, R2: Share a URL without a network or server settings. ShareDing appears in the text Share menu, keeps the sending app visible, saves the entry, shows a short Toast, and sends it after network access and server settings become available. Sharing invalid text leaves the queue unchanged.
 - R3, R6: Return 401/5xx from the API, drop the connection, or stop the worker. The entry remains queued and is removed only after a successful POST. A new link during backoff waits for the existing retry.
 - R15: Save 50 links while sync is waiting for a network: one unfinished request remains. Save links while sync is running: one successor remains blocked without canceling the running job. After it finishes, the successor processes any link it missed.
+- R18: With an empty queue or missing server settings, run recovery and observe no new sync request. With a queued link and no sync request, recovery adds exactly one. With an enqueued retry or running upload, recovery keeps its WorkManager ID and adds no successor. Repeated registration keeps one periodic request. After an ordinary process kill or reboot, WorkManager can run the saved work without reopening the UI.
 - R2, R9: Reach a linkding server using HTTP or HTTPS only through LAN/VPN. Delivery works without public internet validation; HTTP shows a warning.
 - R4, R5: The add form, Queue, and Settings perform their actions and show the agreed states in Light/Dark themes.
 - R7: Cancel removal and keep the entry; confirm removal and delete only the selected entry.

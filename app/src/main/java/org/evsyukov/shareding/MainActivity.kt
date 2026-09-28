@@ -3,6 +3,7 @@ package org.evsyukov.shareding
 import android.content.Context
 import android.os.Bundle
 import android.text.format.DateUtils
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
@@ -79,6 +80,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.lifecycleScope
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.Dispatchers
@@ -114,7 +116,15 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         stopWatchingNetworks = container.networkTracker.subscribe {
-            container.scheduler.ensureScheduled()
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    container.recoverQueuedSync()
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (error: Exception) {
+                    Log.e("ShareDing", "Could not schedule sync for new network", error)
+                }
+            }
         }
     }
 
