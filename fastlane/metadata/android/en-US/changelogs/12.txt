@@ -1,0 +1,1 @@
+Restore delivery of queued links if a sync job goes missing. A periodic check can recover the job after the app process exits or the device reboots without resetting an existing retry delay.
