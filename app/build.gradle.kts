@@ -12,16 +12,55 @@ require((releaseKeystore == null && releasePassword == null) ||
     "Set both SHAREDING_RELEASE_KEYSTORE and SHAREDING_RELEASE_PASSWORD to sign a release"
 }
 
+val testTlsRoot = layout.buildDirectory.dir("generated/test-tls")
+val testTlsKeystore = testTlsRoot.map { it.file("androidTest/assets/test_tls.p12") }
+val testTlsCertificate = testTlsRoot.map { it.file("debug/res/raw/test_tls_cert.pem") }
+val keytool = file(System.getProperty("java.home")).resolve("bin/keytool" +
+    if (System.getProperty("os.name").startsWith("Windows")) ".exe" else "")
+val generateTestTlsKey = tasks.register<Exec>("generateTestTlsKey") {
+    val keystore = testTlsKeystore.get().asFile
+    inputs.property("format", "legacy-pkcs12")
+    inputs.property("validityDays", 3650)
+    outputs.file(keystore)
+    doFirst {
+        keystore.parentFile.mkdirs()
+        keystore.delete()
+    }
+    commandLine(keytool, "-J-Dkeystore.pkcs12.legacy", "-genkeypair", "-noprompt",
+        "-storetype", "PKCS12", "-keystore", keystore, "-storepass", "test-password",
+        "-keypass", "test-password", "-alias", "tls", "-keyalg", "RSA", "-keysize", "2048",
+        "-validity", "3650", "-dname", "CN=localhost", "-ext",
+        "SAN=dns:localhost,dns:linkding.invalid,dns:origin.invalid,ip:127.0.0.1")
+}
+val generateTestTls = tasks.register<Exec>("generateTestTls") {
+    dependsOn(generateTestTlsKey)
+    val certificate = testTlsCertificate.get().asFile
+    inputs.file(testTlsKeystore)
+    outputs.file(certificate)
+    doFirst { certificate.parentFile.mkdirs() }
+    commandLine(keytool, "-exportcert", "-rfc", "-storetype", "PKCS12",
+        "-keystore", testTlsKeystore.get().asFile, "-storepass", "test-password", "-alias", "tls",
+        "-file", certificate)
+}
+
+tasks.matching {
+    it.name in setOf("generateDebugResources", "mapDebugSourceSetPaths",
+        "processDebugNavigationResources", "mergeDebugResources", "mergeDebugAndroidTestAssets")
+}.configureEach { dependsOn(generateTestTls) }
+
 android {
     namespace = "org.evsyukov.shareding"
     compileSdk = 36
+
+    sourceSets.getByName("debug").res.srcDir(testTlsRoot.map { it.dir("debug/res") })
+    sourceSets.getByName("androidTest").assets.srcDir(testTlsRoot.map { it.dir("androidTest/assets") })
 
     defaultConfig {
         applicationId = "org.evsyukov.shareding"
         minSdk = 28
         targetSdk = 36
-        versionCode = 12
-        versionName = "0.1.9"
+        versionCode = 13
+        versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -102,6 +141,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:core:1.6.1")

@@ -13,11 +13,12 @@ import org.junit.Test
 
 class LinkdingApiTest {
     @Test fun sendsExpectedPayloadAndToken() = runBlocking {
-        MockWebServer().use { server ->
+        TlsMockServer().use { tls ->
+            val server = tls.server
             server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
             val bookmark = Bookmark(url = "https://example.com", title = "Example", tags = "one, two words",
                 unread = true, archived = false)
-            LinkdingApi().send(server.url("/").toString(), "secret", bookmark)
+            tls.api().send(server.url("/").toString(), "secret", bookmark)
             val request = server.takeRequest()
             assertEquals("/api/bookmarks/", request.path)
             assertEquals("Token secret", request.getHeader("Authorization"))
@@ -30,7 +31,8 @@ class LinkdingApiTest {
     }
 
     @Test fun sendsUnicodeJsonAndAlreadyEncodedUrlAsUtf8() = runBlocking {
-        MockWebServer().use { server ->
+        TlsMockServer().use { tls ->
+            val server = tls.server
             server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
             val bookmark = Bookmark(
                 url = "https://example.com/%D1%81%D1%82%D1%80%D0%B0%D0%BD%D0%B8%D1%86%D0%B0?q=caf%C3%A9",
@@ -38,7 +40,7 @@ class LinkdingApiTest {
                 description = "Описание — déjà vu",
             )
 
-            LinkdingApi().send(server.url("/").toString(), "secret", bookmark)
+            tls.api().send(server.url("/").toString(), "secret", bookmark)
 
             val request = server.takeRequest()
             assertEquals("application/json; charset=utf-8", request.getHeader("Content-Type"))
@@ -53,12 +55,14 @@ class LinkdingApiTest {
     }
 
     @Test fun rejectsRedirectWithoutForwardingToken() = runBlocking {
-        MockWebServer().use { original ->
-            MockWebServer().use { destination ->
+        TlsMockServer().use { originalTls ->
+            TlsMockServer().use { destinationTls ->
+                val original = originalTls.server
+                val destination = destinationTls.server
                 original.enqueue(MockResponse().setResponseCode(302)
                     .addHeader("Location", destination.url("/stolen")))
                 try {
-                    LinkdingApi().send(original.url("/").toString(), "secret",
+                    originalTls.api().send(original.url("/").toString(), "secret",
                         Bookmark(url = "https://example.com"))
                     fail("Redirect must not count as success")
                 } catch (error: ApiException) {
@@ -70,10 +74,11 @@ class LinkdingApiTest {
     }
 
     @Test fun reportsServerError() = runBlocking {
-        MockWebServer().use { server ->
+        TlsMockServer().use { tls ->
+            val server = tls.server
             server.enqueue(MockResponse().setResponseCode(503))
             try {
-                LinkdingApi().check(server.url("/").toString(), "secret")
+                tls.api().check(server.url("/").toString(), "secret")
                 fail("HTTP error must fail")
             } catch (error: ApiException) {
                 assertEquals(503, error.code)
@@ -82,12 +87,13 @@ class LinkdingApiTest {
     }
 
     @Test fun listsAllTagPagesWithoutFollowingServerSuppliedNextUrl() = runBlocking {
-        MockWebServer().use { server ->
+        TlsMockServer().use { tls ->
+            val server = tls.server
             server.enqueue(MockResponse().setBody("""{"count":3,"next":"http://other.example/api/tags/?offset=2","results":[{"name":"reading"},{"name":"work notes"}]}"""))
             server.enqueue(MockResponse().setBody("""{"count":3,"next":null,"results":[{"name":"research"}]}"""))
 
             assertEquals(setOf("reading", "work notes", "research"),
-                LinkdingApi().listTags(server.url("/linkding/").toString(), "secret").toSet())
+                tls.api().listTags(server.url("/linkding/").toString(), "secret").toSet())
             assertEquals("/linkding/api/tags/?limit=100&offset=0", server.takeRequest().path)
             val second = server.takeRequest()
             assertEquals("/linkding/api/tags/?limit=100&offset=2", second.path)
@@ -96,15 +102,27 @@ class LinkdingApiTest {
     }
 
     @Test fun tagListFailureDoesNotProducePartialSuggestions() = runBlocking {
-        MockWebServer().use { server ->
+        TlsMockServer().use { tls ->
+            val server = tls.server
             server.enqueue(MockResponse().setBody("""{"count":2,"next":"more","results":[{"name":"reading"}]}"""))
             server.enqueue(MockResponse().setResponseCode(503))
             try {
-                LinkdingApi().listTags(server.url("/").toString(), "secret")
+                tls.api().listTags(server.url("/").toString(), "secret")
                 fail("A failed page must fail the whole tag list")
             } catch (error: ApiException) {
                 assertEquals(503, error.code)
             }
+        }
+    }
+
+    @Test fun rejectsHttpLinkdingBeforeSendingTokenOrBookmark() = runBlocking {
+        MockWebServer().use { server ->
+            val error = runCatching {
+                LinkdingApi().send(server.url("/").toString(), "secret",
+                    Bookmark(url = "http://example.com/article"))
+            }.exceptionOrNull()
+            assertEquals("Use an HTTPS linkding server URL", error?.message)
+            assertEquals(0, server.requestCount)
         }
     }
 }

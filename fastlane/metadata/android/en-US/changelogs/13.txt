@@ -1,0 +1,1 @@
+Require HTTPS for linkding connections to protect the API token. Existing HTTP server settings remain visible; update the URL to resume sync without losing queued bookmarks. HTTP bookmark links and the optional HTTP proxy remain supported. Add a privacy policy link and Google Play listing assets.

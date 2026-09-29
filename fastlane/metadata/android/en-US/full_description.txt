@@ -8,4 +8,4 @@ Features:
 * Review and retry queued bookmarks; remove entries with confirmation.
 * Set default tags and bookmark options, with tag suggestions from linkding.
 
-ShareDing requires Android 9 or newer and your own linkding server. Enter its URL and API token in Settings. HTTPS is recommended. HTTP is supported for servers on a trusted LAN or VPN, but sends the token and bookmark data without TLS.
+ShareDing requires Android 9 or newer and your own linkding server. Enter its HTTPS URL and API token in Settings. The app can use an optional HTTP proxy; Basic proxy credentials are sent to that proxy without TLS.

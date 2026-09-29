@@ -7,7 +7,7 @@
 
 ShareDing is an Android share target for [linkding](https://github.com/sissbruecker/linkding). It saves links from other apps to a local queue, then sends them to your linkding server. It requires Android 9 (API 28) or newer.
 
-[Releases](https://github.com/juev/shareding/releases) · [Quick start](#quick-start) · [Screenshots](#screenshots) · [Contributing](#contributing) · [License](#license)
+[Releases](https://github.com/juev/shareding/releases) · [Quick start](#quick-start) · [Screenshots](#screenshots) · [Privacy](docs/privacy.md) · [Contributing](#contributing) · [License](#license)
 
 ## Why it exists
 
@@ -37,7 +37,7 @@ These screens were captured on an Android 16 emulator with example links in the 
 ## Quick start
 
 1. Install the APK using [Obtainium](https://github.com/ImranR98/Obtainium) or download it from [Releases](https://github.com/juev/shareding/releases). See [Install and update](#install-and-update) for details.
-2. In Settings, enter your linkding server URL and API token, then tap **Save settings** at the bottom. Use **Test Connection** to check the server. HTTPS is recommended; HTTP is also supported for servers on a trusted LAN or VPN.
+2. In Settings, enter your HTTPS linkding server URL and API token, then tap **Save settings** at the bottom. Use **Test Connection** to check the server. If you previously configured an HTTP server URL, change it to HTTPS to resume sync; your queued bookmarks remain on the device.
 3. Open a browser's Share menu and select **ShareDing**. It returns to the browser after a short confirmation without opening the main app screen. You can also tap `+` in Queue to add a link manually. The full-screen form accepts a URL, title, description, and tags; **Fetch page details** fills available title, description, and keyword tags without replacing text you have entered.
 4. Check Queue for waiting, sending, or failed bookmarks. Failed entries have a **Retry** action; **Sync Now** in Settings requests another attempt. Removing an entry requires confirmation.
 
@@ -45,7 +45,7 @@ Settings also lets you set default tags and choose whether new bookmarks are mar
 
 To route app requests through an HTTP proxy, turn on **Use proxy** in Settings and enter its host and port. Username and password are optional. **Test Connection** uses the proxy settings currently shown in the form, so you can check them before saving. When enabled, the proxy handles linkding requests and page-detail fetches. If it is unavailable, ShareDing does not fall back to a direct request. Proxy passwords are encrypted with Android Keystore; HTTP proxy authentication sends credentials to the proxy without TLS, so use a trusted network.
 
-Settings shows the queue count, last successful sync, latest error, and an inline Test Connection result. The API token is encrypted using a key held in Android Keystore. If you use HTTP, Settings warns that the token and bookmark data are sent without TLS.
+Settings shows the queue count, last successful sync, latest error, and an inline Test Connection result. The API token is encrypted using a key held in Android Keystore. The [privacy policy](docs/privacy.md) explains how the app handles bookmarks, the token, and proxy settings.
 
 ShareDing is written in Kotlin. Jetpack Compose provides the interface, Room stores the queue, and WorkManager handles background sync.
 
@@ -70,9 +70,9 @@ Install JDK 17 or newer, Android SDK Platform 36, and Build Tools 36.0.0. Set th
 
 The last command requires a running emulator or connected device. The debug APK is at `app/build/outputs/apk/debug/app-debug.apk`; install it with `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
 
-CI builds the app and runs unit tests and lint for pushes to `main` and pull requests. For a release, increment `versionCode` and update `versionName` in `app/build.gradle.kts`, commit and push the change to `main`, then push a `v`-prefixed tag on that commit matching `versionName`. The [release workflow](.github/workflows/release.yml) builds and signs the APK, checks the tag against the package version, and publishes a GitHub Release with the APK and a SHA-256 checksum. You can run the workflow manually to check signing without publishing a release.
+CI builds the app and runs unit tests and lint for pushes to `main` and pull requests. For a release, increment `versionCode` and update `versionName` in `app/build.gradle.kts`, add the matching changelog, commit and push to `main`, then push a `v`-prefixed tag matching `versionName`. The [release workflow](.github/workflows/release.yml) signs the APK with the existing release key, verifies its package, version, and certificate, and publishes it with a SHA-256 checksum. It also signs an AAB with a separate Play upload key and retains it as a workflow artifact for manual Play Console upload. You can run the workflow manually to check signing without publishing a release.
 
-The workflow reads the signing key and password from GitHub Actions repository secrets. For a local signed build on macOS, run `./scripts/build-release-macos.sh`; it reads the key from `$HOME/.local/share/shareding/release.jks` and its password from macOS Keychain (service `org.evsyukov.shareding.release`, account `shareding`). Set `SHAREDING_RELEASE_KEYSTORE` and `SHAREDING_RELEASE_PASSWORD` to use other locations. The signed APK is written to `app/build/outputs/apk/release/app-release.apk`. Back up the key and password securely: without them, future APKs cannot update existing installations. See [Android App Signing](https://developer.android.com/studio/publish/app-signing) for the signing key requirement.
+The workflow reads both signing keys and passwords from GitHub Actions repository secrets. For a local signed APK on macOS, run `./scripts/build-release-macos.sh`; it reads the key from `$HOME/.local/share/shareding/release.jks` and its password from macOS Keychain (service `org.evsyukov.shareding.release`, account `shareding`). Set `SHAREDING_RELEASE_KEYSTORE` and `SHAREDING_RELEASE_PASSWORD` to use other locations. The signed APK is written to `app/build/outputs/apk/release/app-release.apk`. Back up the app-signing and Play upload keys and passwords securely. See the [Google Play release checklist](docs/google-play.md) for the separate AAB key and Console steps.
 
 The behavior contract is in the [specification](docs/specs/share-to-linkding.md).
 

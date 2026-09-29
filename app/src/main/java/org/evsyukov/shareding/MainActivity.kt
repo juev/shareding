@@ -522,7 +522,7 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
                 }, modifier = Modifier.fillMaxWidth(), label = { Text("Server URL") },
                     placeholder = { Text("https://linkding.example") }, singleLine = true)
                 if (server.trim().startsWith("http://", ignoreCase = true)) {
-                    Text("HTTP sends your API token and bookmarks without TLS encryption.",
+                    Text("Linkding requires HTTPS. Update this URL to sync queued bookmarks.",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall)
                 }
@@ -667,6 +667,13 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
                         horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Source code")
                         Text("GitHub", color = MaterialTheme.colorScheme.primary)
+                    }
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .clickable { uriHandler.openUri("https://github.com/juev/shareding/blob/main/docs/privacy.md") },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Privacy policy")
+                        Text("Read", color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }

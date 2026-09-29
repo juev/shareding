@@ -121,14 +121,15 @@ class SyncSchedulerTest {
 
     @Test fun successorSendsLinkSavedAfterCurrentWorkStarted() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val tls = AndroidTestTls(InstrumentationRegistry.getInstrumentation().context)
         val app = context.applicationContext as ShareDingApplication
         val workManager = WorkManager.getInstance(context)
         workManager.cancelUniqueWork("linkding-sync").result.get()
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
         BlockingTestWorker.reset()
-        MockWebServer().use { server ->
+        MockWebServer().apply { tls.start(this) }.use { server ->
             try {
-                app.container.settings.save(server.url("/").toString(), "test-token", "", true, false,
+                app.container.settings.save(tls.url(server), "test-token", "", true, false,
                     ProxyConfig())
                 server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
                 server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))

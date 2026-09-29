@@ -4,10 +4,12 @@ import android.net.Network
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import java.io.IOException
 import java.net.URI
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
@@ -27,6 +29,7 @@ object Urls {
 
     fun server(value: String): URI {
         val uri = parse(value)
+        require(uri.scheme.equals("https", true)) { "Use an HTTPS linkding server URL" }
         require(uri.rawQuery == null && uri.rawFragment == null) { "Server URL cannot contain query or fragment" }
         return URI(uri.scheme.lowercase(), null, uri.host, uri.port,
             uri.path.trimEnd('/') + "/", null, null)
@@ -62,7 +65,10 @@ object TagNames {
 
 class ApiException(val code: Int, message: String) : Exception(message)
 
-class LinkdingApi(private val proxyProvider: () -> ProxyConfig = { ProxyConfig() }) {
+class LinkdingApi(
+    private val clientFactory: (ProxyConfig, Network?, Long, Long) -> OkHttpClient = ProxyHttpClient::create,
+    private val proxyProvider: () -> ProxyConfig = { ProxyConfig() },
+) {
     suspend fun check(server: String, token: String, network: Network? = null,
                       proxy: ProxyConfig? = null) = withContext(Dispatchers.IO) {
         request(endpoint(server, "api/tags/"), token, "GET", null, network, proxy)
@@ -119,7 +125,15 @@ class LinkdingApi(private val proxyProvider: () -> ProxyConfig = { ProxyConfig()
             .header("Accept", "application/json")
             .method(method, body?.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
-        ProxyHttpClient.create(config, network, 10, 15).newCall(request).execute().use { response ->
+        val response = try {
+            clientFactory(config, network, 10, 15).newCall(request).execute()
+        } catch (error: IOException) {
+            if (config.enabled && error.message == "Failed to authenticate with proxy") {
+                throw ApiException(407, "Proxy authentication failed")
+            }
+            throw error
+        }
+        response.use {
             val code = response.code
             if (code !in 200..299) {
                 if (code == 407 && config.enabled) throw ApiException(code, "Proxy authentication failed")

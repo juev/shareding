@@ -82,6 +82,52 @@ jobs:
           (cd "$asset_dir" && sha256sum "$asset_name" > "$asset_name.sha256")
           echo "Verified signed APK: $asset_name"
 
+      - name: Restore Play upload key
+        env:
+          UPLOAD_KEYSTORE_B64: ${{ secrets.SHAREDING_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          if [[ -z "$UPLOAD_KEYSTORE_B64" ]]; then
+            echo 'Play upload keystore secret is missing' >&2
+            exit 1
+          fi
+          printf '%s' "$UPLOAD_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/shareding-upload.jks"
+          chmod 600 "$RUNNER_TEMP/shareding-upload.jks"
+
+      - name: Build signed Play bundle
+        env:
+          SHAREDING_RELEASE_KEYSTORE: ${{ runner.temp }}/shareding-upload.jks
+          SHAREDING_RELEASE_PASSWORD: ${{ secrets.SHAREDING_UPLOAD_PASSWORD }}
+        run: |
+          if [[ -z "$SHAREDING_RELEASE_PASSWORD" ]]; then
+            echo 'Play upload password secret is missing' >&2
+            exit 1
+          fi
+          ./gradlew --no-daemon bundleRelease
+
+      - name: Verify Play bundle
+        run: |
+          set -euo pipefail
+          bundle=app/build/outputs/bundle/release/app-release.aab
+          jarsigner -verify "$bundle" >/dev/null
+          signer_digest="$(keytool -printcert -jarfile "$bundle" | sed -n 's/^[[:space:]]*SHA256: //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          if [[ "$signer_digest" != 'de5cb1c816baed0255befa894f12bbd11c475f4bc5c1dc080bc5efcde150fc38' ]]; then
+            echo 'Play upload certificate does not match the registered upload key' >&2
+            exit 1
+          fi
+          if [[ "$signer_digest" == '3693ca80cbfc0d7b30a403f49c25637d78b12d1a196bdec398f413fb56a8657e' ]]; then
+            echo 'Play bundle uses the APK signing certificate' >&2
+            exit 1
+          fi
+          echo "Verified Play upload bundle: $bundle"
+
+      - name: Retain Play bundle for Console upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShareDing-Play-${{ github.ref_name }}
+          path: app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Publish GitHub Release
         if: github.event_name == 'push'
         env:

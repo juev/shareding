@@ -11,8 +11,15 @@ class UrlsTest {
         assertNull(Urls.sharedText("just a message"))
     }
 
-    @Test fun acceptsHttpServerAndRejectsCredentials() {
-        assertEquals("http://example.com/linkding/", Urls.server("http://example.com/linkding").toString())
+    @Test fun serverRequiresHttpsButBookmarksMayUseHttp() {
+        assertEquals("https://example.com/linkding/", Urls.server("https://example.com/linkding").toString())
+        assertEquals("http://example.com/article", Urls.parse("http://example.com/article").toString())
+        try {
+            Urls.server("http://example.com/linkding")
+            fail("HTTP linkding servers must be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("Use an HTTPS linkding server URL", error.message)
+        }
         try {
             Urls.server("https://user:pass@example.com")
             fail("Credentials must be rejected")

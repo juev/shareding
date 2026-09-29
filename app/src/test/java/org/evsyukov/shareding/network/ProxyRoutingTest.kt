@@ -3,6 +3,7 @@ package org.evsyukov.shareding.network
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.evsyukov.shareding.data.Bookmark
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -12,40 +13,48 @@ import org.junit.Test
 
 class ProxyRoutingTest {
     @Test fun allServerAndPageRequestsUseEnabledProxy() = runBlocking {
-        MockWebServer().use { proxy ->
+        TlsMockServer(tunnelProxy = true).use { tls ->
+            val proxy = tls.server
             val config = ProxyConfig(true, proxy.hostName, proxy.port)
+            proxy.enqueue(MockResponse().setSocketPolicy(SocketPolicy.UPGRADE_TO_SSL_AT_END))
             proxy.enqueue(MockResponse().setBody("{}"))
+            proxy.enqueue(MockResponse().setSocketPolicy(SocketPolicy.UPGRADE_TO_SSL_AT_END))
             proxy.enqueue(MockResponse().setBody("""{"next":null,"results":[{"name":"reading"}]}"""))
+            proxy.enqueue(MockResponse().setSocketPolicy(SocketPolicy.UPGRADE_TO_SSL_AT_END))
             proxy.enqueue(MockResponse().setResponseCode(201))
             proxy.enqueue(MockResponse().addHeader("Content-Type", "text/html")
                 .setBody("<title>Through proxy</title>"))
-            val api = LinkdingApi { config }
-            api.check("http://origin.invalid/", "secret")
-            assertEquals(listOf("reading"), api.listTags("http://origin.invalid/", "secret"))
-            api.send("http://origin.invalid/", "secret", Bookmark(url = "https://example.com"))
+            val api = tls.api { config }
+            api.check("https://origin.invalid/", "secret")
+            assertEquals(listOf("reading"), api.listTags("https://origin.invalid/", "secret"))
+            api.send("https://origin.invalid/", "secret", Bookmark(url = "https://example.com"))
             assertEquals("Through proxy", PageMetadataFetcher { config }
                 .fetch("http://page.invalid/article")?.title)
 
-            assertEquals(4, proxy.requestCount)
-            val requests = (1..4).map { proxy.takeRequest() }
+            assertEquals(7, proxy.requestCount)
+            val requests = (1..7).map { proxy.takeRequest() }
             val lines = requests.map { it.requestLine }
-            assertTrue(lines.toString(), lines[0].contains("origin.invalid/api/tags/"))
-            assertTrue(lines[1].contains("origin.invalid/api/tags/"))
-            assertTrue(lines[2].contains("origin.invalid/api/bookmarks/"))
-            assertTrue(lines[3].contains("page.invalid/article"))
+            assertTrue(lines.toString(), lines[0].startsWith("CONNECT origin.invalid:443"))
+            assertEquals("Token secret", requests[1].getHeader("Authorization"))
+            assertTrue(lines.toString(), lines[1].contains("/api/tags/"))
+            assertTrue(lines.toString(), lines[3].contains("/api/tags/"))
+            assertTrue(lines.toString(), lines[5].contains("/api/bookmarks/"))
+            assertTrue(lines.toString(), lines[6].contains("page.invalid/article"))
         }
     }
 
-    @Test fun proxyAuthIsSentOnlyAfterChallenge() = runBlocking {
-        MockWebServer().use { proxy ->
-            proxy.enqueue(MockResponse().setResponseCode(407)
-                .addHeader("Proxy-Authenticate", "Basic realm=\"proxy\""))
+    @Test fun proxyAuthOnConnectDoesNotExposeLinkdingToken() = runBlocking {
+        TlsMockServer(tunnelProxy = true).use { tls ->
+            val proxy = tls.server
+            proxy.enqueue(MockResponse().setSocketPolicy(SocketPolicy.UPGRADE_TO_SSL_AT_END))
             proxy.enqueue(MockResponse().setBody("{}"))
-            LinkdingApi().check("http://origin.invalid/", "secret", proxy =
+            tls.api().check("https://origin.invalid/", "secret", proxy =
                 ProxyConfig(true, proxy.hostName, proxy.port, "alice", "password"))
-            assertNull(proxy.takeRequest().getHeader("Proxy-Authorization"))
+            val connect = proxy.takeRequest()
             assertEquals("Basic YWxpY2U6cGFzc3dvcmQ=",
-                proxy.takeRequest().getHeader("Proxy-Authorization"))
+                connect.getHeader("Proxy-Authorization"))
+            assertNull(connect.getHeader("Authorization"))
+            assertEquals("Token secret", proxy.takeRequest().getHeader("Authorization"))
         }
     }
 
@@ -54,7 +63,7 @@ class ProxyRoutingTest {
             proxy.enqueue(MockResponse().setResponseCode(407)
                 .addHeader("Proxy-Authenticate", "Basic realm=\"proxy\""))
             val error = runCatching {
-                LinkdingApi().check("http://origin.invalid/", "secret", proxy =
+                LinkdingApi().check("https://origin.invalid/", "secret", proxy =
                     ProxyConfig(true, proxy.hostName, proxy.port))
             }.exceptionOrNull()
             assertEquals("Proxy authentication failed", error?.message)
@@ -67,7 +76,7 @@ class ProxyRoutingTest {
                 proxy.enqueue(MockResponse().setResponseCode(503))
                 proxy.enqueue(MockResponse().setResponseCode(503))
                 val config = ProxyConfig(true, proxy.hostName, proxy.port)
-                val url = origin.url("/").toString()
+                val url = "https://origin.invalid/"
                 assertTrue(runCatching { LinkdingApi().check(url, "secret", proxy = config) }.isFailure)
                 assertNull(PageMetadataFetcher().fetch(origin.url("/page").toString(), proxy = config))
                 assertEquals(0, origin.requestCount)
@@ -77,9 +86,10 @@ class ProxyRoutingTest {
     }
 
     @Test fun disabledProxyConnectsDirectly() = runBlocking {
-        MockWebServer().use { origin ->
+        TlsMockServer().use { tls ->
+            val origin = tls.server
             origin.enqueue(MockResponse().setBody("{}"))
-            LinkdingApi().check(origin.url("/").toString(), "secret", proxy = ProxyConfig())
+            tls.api().check(origin.url("/").toString(), "secret", proxy = ProxyConfig())
             assertNotNull(origin.takeRequest())
         }
     }

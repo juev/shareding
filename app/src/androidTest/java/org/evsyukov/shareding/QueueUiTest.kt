@@ -71,11 +71,11 @@ class QueueUiTest {
         runBlocking { assertNull(app.container.db.bookmarks().findByUrl(url)) }
     }
 
-    @Test fun httpServerShowsCleartextWarning() {
+    @Test fun httpServerShowsHttpsRequirement() {
         val app = compose.activity.application as ShareDingApplication
         app.container.settings.save("http://example.com", null, "", true, false)
         compose.onNodeWithText("Settings").performClick()
-        compose.onNodeWithText("HTTP sends your API token and bookmarks without TLS encryption.")
+        compose.onNodeWithText("Linkding requires HTTPS. Update this URL to sync queued bookmarks.")
             .assertIsDisplayed()
     }
 
@@ -220,13 +220,14 @@ class QueueUiTest {
     }
 
     @Test fun unavailableTagSuggestionsDoNotPreventSavingManualTags() {
-        MockWebServer().use { server ->
+        val tls = AndroidTestTls(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context)
+        MockWebServer().apply { tls.start(this) }.use { server ->
             server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse =
                     MockResponse().setResponseCode(503)
             }
             val app = compose.activity.application as ShareDingApplication
-            app.container.settings.save(server.url("/").toString(), "secret", "", true, false)
+            app.container.settings.save(tls.url(server), "secret", "", true, false)
             compose.onNodeWithText("Settings").performClick()
             compose.onNode(hasScrollAction()).performScrollToNode(hasText("Default tags"))
             compose.waitUntil(10_000) {
@@ -243,7 +244,8 @@ class QueueUiTest {
     }
 
     @Test fun serverTagSuggestionsWorkInSettingsAndAddBookmark() {
-        MockWebServer().use { server ->
+        val tls = AndroidTestTls(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context)
+        MockWebServer().apply { tls.start(this) }.use { server ->
             server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse =
                     if (request.method == "POST") MockResponse().setResponseCode(503)
@@ -251,7 +253,7 @@ class QueueUiTest {
             }
             val app = compose.activity.application as ShareDingApplication
             runBlocking { withContext(Dispatchers.IO) { app.container.db.clearAllTables() } }
-            app.container.settings.save(server.url("/").toString(), "secret", "", true, false)
+            app.container.settings.save(tls.url(server), "secret", "", true, false)
             compose.onNodeWithText("Settings").performClick()
             compose.onNode(hasScrollAction()).performScrollToNode(hasText("Default tags"))
             compose.onNodeWithText("Default tags").performTextInput("rea")
