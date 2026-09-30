@@ -261,7 +261,8 @@ class QueueUiTest {
             compose.onNodeWithText("Add bookmark").performClick()
             compose.onNodeWithText("URL").performTextInput(url)
             compose.onNode(hasScrollAction()).performScrollToNode(hasText("Fetch page details"))
-            compose.onNodeWithText("Fetch page details").performClick()
+            // The keyboard animation moves the form, so a tap by position can miss the button.
+            compose.onNodeWithText("Fetch page details").performSemanticsAction(SemanticsActions.OnClick)
             compose.waitUntil(10_000) {
                 compose.onAllNodes(hasText("Fetched title")).fetchSemanticsNodes().isNotEmpty()
             }

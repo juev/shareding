@@ -1,6 +1,7 @@
 package org.evsyukov.shareding
 
 import android.content.Intent
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
@@ -9,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
@@ -56,7 +58,8 @@ class ShareFormTest {
             compose.onNode(hasText(url)).assertIsDisplayed()
             compose.onNode(hasText("Browser title")).assertIsDisplayed()
             compose.onNodeWithText("Tags").performTextInput("reading")
-            compose.onNodeWithText("Save bookmark").performClick()
+            // The Save button follows the keyboard animation, so a tap by position can miss it.
+            compose.onNodeWithText("Save bookmark").performSemanticsAction(SemanticsActions.OnClick)
             waitFor(Lifecycle.State.DESTROYED, scenario)
         }
         val saved = runBlocking { app.container.db.bookmarks().findByUrl(url) }

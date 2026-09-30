@@ -49,6 +49,11 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             throw cancel
         } catch (error: Exception) {
             val message = error.message ?: "Cannot reach linkding"
+            if (dao.count() == 0) {
+                // Nothing is waiting, so there is nothing to retry or notify about.
+                runCatching { container.settings.recordError(message) }
+                return Result.success()
+            }
             dao.batch(50).forEach { dao.markFailed(it.id, message) }
             runCatching { container.settings.recordError(message) }
             SyncProblem.of(error)?.let { container.notifier.problem(it, message) }
