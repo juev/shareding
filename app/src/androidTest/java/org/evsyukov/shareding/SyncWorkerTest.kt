@@ -45,6 +45,32 @@ class SyncWorkerTest {
         }
     }
 
+    @Test fun emptyQueueChecksServerAndRecordsSync() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val app = context.applicationContext as ShareDingApplication
+        val tls = AndroidTestTls(InstrumentationRegistry.getInstrumentation().context)
+        WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
+        withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+        MockWebServer().apply { tls.start(this) }.use { server ->
+            try {
+                app.container.settings.save(tls.url(server), "secret", "", true, false)
+                app.container.settings.recordError("Old failure")
+                val before = app.container.settings.state.value.lastSyncAttempt
+                server.enqueue(MockResponse().setBody("{}"))
+                TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+                assertEquals(1, server.requestCount)
+                assertEquals("/api/tags/", server.takeRequest().path)
+                val settings = app.container.settings.state.value
+                assertEquals("", settings.lastError)
+                assertEquals(true, settings.lastSyncAttempt >= before)
+                assertEquals(true, settings.lastSync > 0)
+            } finally {
+                app.container.settings.save("", null, "", true, false)
+                withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+            }
+        }
+    }
+
     @Test fun workerDrainsFiftyQueuedBookmarks() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val tls = AndroidTestTls(InstrumentationRegistry.getInstrumentation().context)

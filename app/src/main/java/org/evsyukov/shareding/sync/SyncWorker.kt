@@ -42,7 +42,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             container.notifier.problem(SyncProblem.TOKEN, message)
             return Result.success()
         } ?: return Result.success()
-        if (dao.count() == 0) return Result.success()
+        // An empty queue still checks the server, so "Sync now" reports a fresh result.
         val selectedNetwork = try {
             container.networkSelector.checkAndSelect(settings.serverUrl, token, network)
         } catch (cancel: CancellationException) {
@@ -54,6 +54,12 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             SyncProblem.of(error)?.let { container.notifier.problem(it, message) }
             container.notifier.checkStale(dao.oldestCreatedAt())
             return Result.retry()
+        }
+
+        if (dao.count() == 0) {
+            runCatching { container.settings.recordSuccess() }
+            container.notifier.resolved()
+            return Result.success()
         }
 
         var failed = false

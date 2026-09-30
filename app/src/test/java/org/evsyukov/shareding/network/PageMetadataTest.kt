@@ -9,28 +9,20 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PageMetadataTest {
-    @Test fun parsesTitleDescriptionAndKeywordsRegardlessOfAttributeOrder() {
+    @Test fun parsesTitleAndDescriptionRegardlessOfAttributeOrderAndIgnoresKeywords() {
         val html = """<html><head><title>Fallback</title>
             <meta content='A &amp; B' property='og:title'>
             <meta content='Useful &amp; brief' name='description'>
             <meta name='keywords' content='reading, work notes, reading'>
             </head></html>"""
-        assertEquals(PageMetadata("A & B", "Useful & brief", "reading, work notes"),
+        assertEquals(PageMetadata("A & B", "Useful & brief"),
             PageMetadataParser.parse(html))
-    }
-
-    @Test fun keywordsTooLongForLinkdingTagsAreSkipped() {
-        val long = "a".repeat(TagNames.MAX_LENGTH + 1)
-        val html = "<html><head><meta name='keywords' content='reading, $long, work'></head></html>"
-        assertEquals("reading, work", PageMetadataParser.parse(html).tags)
     }
 
     @Test fun absentMetadataDoesNotEraseManualValues() {
         val found = PageMetadataParser.parse("<html><head><title>Page title</title></head></html>")
-        assertEquals(PageMetadata("My title", "My notes", "local"),
-            found.fillEmpty("My title", "My notes", "local"))
-        assertEquals(PageMetadata("Page title", "My notes", "local"),
-            found.fillEmpty("", "My notes", "local"))
+        assertEquals(PageMetadata("My title", "My notes"), found.fillEmpty("My title", "My notes"))
+        assertEquals(PageMetadata("Page title", "My notes"), found.fillEmpty("", "My notes"))
     }
 
     @Test fun fetchesHtmlOnlyAndDoesNotFollowRedirect() = runBlocking {
@@ -38,7 +30,7 @@ class PageMetadataTest {
             server.enqueue(MockResponse().addHeader("Content-Type", "text/html; charset=utf-8")
                 .setBody("<title>Fetched</title><meta name='description' content='Summary'>"))
             server.enqueue(MockResponse().setResponseCode(302).addHeader("Location", "/another"))
-            assertEquals(PageMetadata("Fetched", "Summary", ""),
+            assertEquals(PageMetadata("Fetched", "Summary"),
                 PageMetadataFetcher().fetch(server.url("/page").toString()))
             assertNull(PageMetadataFetcher().fetch(server.url("/redirect").toString()))
             assertEquals(2, server.requestCount)

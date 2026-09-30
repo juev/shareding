@@ -189,7 +189,14 @@ class QueueUiTest {
         compose.onNodeWithText("Add Bookmark").assertDoesNotExist()
     }
 
+    private fun clearQueue() {
+        val app = compose.activity.application as ShareDingApplication
+        runBlocking { withContext(Dispatchers.IO) { app.container.db.clearAllTables() } }
+        compose.waitForIdle()
+    }
+
     @Test fun pasteButtonFillsUrlFromClipboard() {
+        clearQueue()
         setClipboard("see https://example.com/pasted?utm_source=x&id=7 thanks")
         compose.onNodeWithText("Add bookmark").performClick()
         compose.onNodeWithContentDescription("Paste link").performClick()
@@ -197,6 +204,7 @@ class QueueUiTest {
     }
 
     @Test fun pasteWithoutLinkKeepsUrlField() {
+        clearQueue()
         setClipboard("no link here")
         compose.onNodeWithText("Add bookmark").performClick()
         compose.onNodeWithText("URL").performTextInput("https://example.com/typed")
@@ -241,7 +249,7 @@ class QueueUiTest {
         assertEquals(true, runBlocking { app.container.db.bookmarks().findByUrl(url)?.sendTitle })
     }
 
-    @Test fun fetchPageDetailsFillsAvailableFields() {
+    @Test fun fetchPageDetailsFillsTitleAndDescriptionButNotTags() {
         MockWebServer().use { page ->
             page.enqueue(MockResponse().addHeader("Content-Type", "text/html")
                 .setBody("<title>Fetched title</title><meta name='description' content='Fetched summary'>" +
@@ -258,7 +266,6 @@ class QueueUiTest {
                 compose.onAllNodes(hasText("Fetched title")).fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("Fetched summary").assertIsDisplayed()
-            compose.onNodeWithText("reading, research").assertIsDisplayed()
             compose.onNodeWithText("Save bookmark").performClick()
             compose.waitUntil(5_000) {
                 runBlocking { app.container.db.bookmarks().findByUrl(url) != null }
@@ -266,7 +273,7 @@ class QueueUiTest {
             val saved = runBlocking { app.container.db.bookmarks().findByUrl(url) }
             assertEquals("Fetched title", saved?.title)
             assertEquals("Fetched summary", saved?.description)
-            assertEquals("reading, research", saved?.tags)
+            assertEquals("", saved?.tags)
             assertEquals(1, page.requestCount)
         }
     }
