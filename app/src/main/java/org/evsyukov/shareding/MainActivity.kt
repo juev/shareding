@@ -119,16 +119,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val editor = ViewModelProvider(this)[QueueEditorViewModel::class.java]
         setContent {
-            val dark = isSystemInDarkTheme()
-            SideEffect {
-                WindowCompat.getInsetsController(window, window.decorView).apply {
-                    isAppearanceLightStatusBars = !dark
-                    isAppearanceLightNavigationBars = !dark
-                }
-            }
-            ShareDingTheme {
-                ShareDingScreen(container, editor)
-            }
+            AppContent(this) { ShareDingScreen(container, editor) }
         }
     }
 
@@ -153,6 +144,46 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 
+}
+
+/** Applies the app theme and matching system bar icon colors. */
+@Composable
+internal fun AppContent(activity: ComponentActivity, content: @Composable () -> Unit) {
+    val dark = isSystemInDarkTheme()
+    SideEffect {
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
+        }
+    }
+    ShareDingTheme(content = content)
+}
+
+/** Add Bookmark form for a link received through the "ShareDing…" Share target. */
+@Composable
+internal fun ShareFormScreen(container: AppContainer, url: String, title: String, onDone: () -> Unit) {
+    val settings by container.settings.state.collectAsState()
+    var serverTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var tagLoadError by remember { mutableStateOf(false) }
+    var tagRefresh by remember { mutableIntStateOf(0) }
+    val configured = settings.hasToken && settings.serverUrl.isNotBlank()
+    LaunchedEffect(settings.serverUrl, settings.hasToken, tagRefresh) {
+        serverTags = emptyList()
+        tagLoadError = false
+        if (!configured) return@LaunchedEffect
+        try {
+            val token = withContext(Dispatchers.IO) { container.settings.token().orEmpty() }
+            serverTags = container.networkSelector.listTags(settings.serverUrl, token)
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
+            tagLoadError = true
+        }
+    }
+    AddBookmarkScreen(container, serverTags, tagLoadError, canRefreshTags = configured,
+        onRefreshTags = { tagRefresh++ }, onDismiss = onDone, initialUrl = url,
+        initialTitle = BookmarkTitles.limit(title.replace(Regex("[\r\n]+"), " ")).trim(),
+        backDescription = "Cancel")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -485,20 +516,37 @@ private fun clipboardUrl(context: Context): String? {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddBookmarkScreen(container: AppContainer, availableTags: List<String>,
-                              tagLoadError: Boolean, canRefreshTags: Boolean,
-                              onRefreshTags: () -> Unit,
-                              onDismiss: () -> Unit) {
+internal fun AddBookmarkScreen(container: AppContainer, availableTags: List<String>,
+                               tagLoadError: Boolean, canRefreshTags: Boolean,
+                               onRefreshTags: () -> Unit,
+                               onDismiss: () -> Unit,
+                               initialUrl: String = "", initialTitle: String = "",
+                               backDescription: String = "Back to queue") {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var url by rememberSaveable { mutableStateOf("") }
-    var title by rememberSaveable { mutableStateOf("") }
+    var url by rememberSaveable { mutableStateOf(initialUrl) }
+    var title by rememberSaveable { mutableStateOf(initialTitle) }
     var description by rememberSaveable { mutableStateOf("") }
     var tags by rememberSaveable { mutableStateOf("") }
     var metadataStatus by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
-    BackHandler { if (!saving) onDismiss() }
+    var confirmDiscard by rememberSaveable { mutableStateOf(false) }
+    val requestDismiss: () -> Unit = {
+        val changed = url != initialUrl || title != initialTitle || description.isNotEmpty() ||
+            tags.isNotEmpty()
+        if (!saving) {
+            if (changed) confirmDiscard = true else onDismiss()
+        }
+    }
+    BackHandler { requestDismiss() }
+    if (confirmDiscard) AlertDialog(onDismissRequest = { confirmDiscard = false },
+        title = { Text("Discard bookmark?") }, text = { Text("The link will not be added to the queue.") },
+        confirmButton = {
+            TextButton(onClick = { confirmDiscard = false; onDismiss() }) { Text("Discard") }
+        }, dismissButton = {
+            TextButton(onClick = { confirmDiscard = false }) { Text("Keep editing") }
+        })
     val save: () -> Unit = {
         scope.launch {
             if (saving) return@launch
@@ -532,8 +580,8 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
     }
     Scaffold(
         topBar = { TopAppBar(title = { Text("Add Bookmark") }, navigationIcon = {
-            IconButton(onClick = onDismiss, enabled = !saving) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to queue")
+            IconButton(onClick = requestDismiss, enabled = !saving) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = backDescription)
             }
         }) },
         bottomBar = {

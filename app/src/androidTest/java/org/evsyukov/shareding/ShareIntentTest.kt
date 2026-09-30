@@ -22,6 +22,10 @@ class ShareIntentTest {
         val targets = context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
         assertTrue(targets.any { it.activityInfo.packageName == context.packageName &&
             it.activityInfo.name == ShareActivity::class.java.name })
+        val labels = targets.filter { it.activityInfo.packageName == context.packageName }
+            .associate { it.activityInfo.name to it.loadLabel(context.packageManager).toString() }
+        assertEquals("ShareDing", labels[ShareActivity::class.java.name])
+        assertEquals("ShareDing…", labels[ShareFormActivity::class.java.name])
     }
 
     @Test fun sharePersistsWithoutServerConfiguration() = runBlocking {

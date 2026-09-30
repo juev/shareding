@@ -14,22 +14,35 @@ import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.Bookmark
 import org.evsyukov.shareding.network.Urls
 
+/** The link and title an app passes with `ACTION_SEND`. */
+internal data class SharedLink(val url: String, val title: String) {
+    companion object {
+        const val INVALID = "No valid HTTP(S) URL"
+
+        fun from(intent: Intent): SharedLink? {
+            val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+                ?: IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+                    ?.toString().orEmpty()
+            val url = Urls.sharedText(text) ?: return null
+            val title = intent.getStringExtra(Intent.EXTRA_TITLE)
+                ?: intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()
+            return SharedLink(url, title)
+        }
+    }
+}
+
 /** A translucent Share target that leaves the sending app visible until the local save completes. */
 class ShareActivity : ComponentActivity() {
     private val container get() = (application as ShareDingApplication).container
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT)
-            ?: IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-                ?.toString().orEmpty()
-        val url = Urls.sharedText(text)
-        if (url == null) {
-            showResult("No valid HTTP(S) URL")
+        val shared = SharedLink.from(intent)
+        if (shared == null) {
+            showResult(SharedLink.INVALID)
             return
         }
-        val title = intent.getStringExtra(Intent.EXTRA_TITLE)
-            ?: intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()
+        val (url, title) = shared
 
         lifecycleScope.launch {
             val message = try {
