@@ -11,6 +11,12 @@ class UrlsTest {
         assertNull(Urls.sharedText("just a message"))
     }
 
+    @Test fun bookmarkUrlsDropTrackingParameters() {
+        assertEquals("https://example.com/a?id=5",
+            Urls.sharedText("see https://example.com/a?utm_source=share&id=5 thanks"))
+        assertEquals("https://youtu.be/abc", Urls.bookmark(" https://youtu.be/abc?si=xyz "))
+    }
+
     @Test fun serverRequiresHttpsButBookmarksMayUseHttp() {
         assertEquals("https://example.com/linkding/", Urls.server("https://example.com/linkding").toString())
         assertEquals("http://example.com/article", Urls.parse("http://example.com/article").toString())

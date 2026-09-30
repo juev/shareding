@@ -34,10 +34,13 @@ object Urls {
             uri.path.trimEnd('/') + "/", null, null)
     }
 
+    /** Validates a bookmark URL and removes known tracking parameters. */
+    fun bookmark(value: String): String = TrackingParams.strip(parse(value).toString())
+
     fun sharedText(text: String): String? {
         val candidate = Regex("https?://[^\\s<>\"']+", RegexOption.IGNORE_CASE)
             .find(text)?.value?.trimEnd('.', ',', ';', ')', ']', '}') ?: return null
-        return runCatching { parse(candidate).toString() }.getOrNull()
+        return runCatching { bookmark(candidate) }.getOrNull()
     }
 }
 
