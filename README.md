@@ -24,7 +24,7 @@ WorkManager also checks for queued links about every 30 minutes when a suitable 
 
 The queue survives app restarts and device reboots. Delivery is at least once: if linkding accepts a request but the response is lost, ShareDing may send the same URL again. Linkding updates an existing bookmark with that URL.
 
-ShareDing keeps shared titles locally and lets linkding determine the page title. Titles saved in the Add Bookmark form are sent as one line with up to 512 characters. Background sync does not fetch bookmarked pages; **Fetch page details** remains available in the form.
+ShareDing keeps shared titles locally and lets linkding determine the page title. Titles entered in Add Bookmark or changed in the queue editor are sent as one line with up to 512 characters. Editing other fields preserves the original title behavior; clearing the title lets linkding fetch it. Background sync does not fetch bookmarked pages; **Fetch page details** remains available in the add form.
 
 ## Screenshots
 
@@ -34,7 +34,7 @@ These screens were captured on an Android 16 emulator with an example link in th
 | --- | --- | --- |
 | <a href="docs/images/queue.png"><img src="docs/images/queue.png" alt="Queue with sync status and an expandable pending bookmark" width="200"></a> | <a href="docs/images/add-bookmark.png"><img src="docs/images/add-bookmark.png" alt="Add Bookmark form with URL, title, description, tags, and Fetch page details" width="200"></a> | <a href="docs/images/settings.png"><img src="docs/images/settings.png" alt="Settings with a proxy switch and bookmark defaults" width="200"></a> |
 
-[Expanded bookmark details](docs/images/queue-expanded.png) show the full title and URL.
+[Expanded bookmark details](docs/images/queue-expanded.png) show the full title and URL, with an action to open the [queue editor](docs/images/edit-bookmark.png).
 
 ## Quick start
 
@@ -42,8 +42,9 @@ These screens were captured on an Android 16 emulator with an example link in th
 2. In Settings, enter your HTTPS linkding server URL and API token, then tap **Save settings** at the bottom. Use **Test Connection** to check the server. If you previously configured an HTTP server URL, change it to HTTPS to resume sync; your queued bookmarks remain on the device.
 3. Open a browser's Share menu and select **ShareDing**. It returns to the browser after a short confirmation without opening the main app screen. You can also tap `+` in Queue to add a link manually. The full-screen form accepts a URL, title, description, and tags; **Fetch page details** fills available title, description, and keyword tags without replacing text you have entered.
 4. Check Queue for waiting, sending, or failed bookmarks and the last sync result and time. Tap a card to inspect and copy its full title, URL, and error. Failed entries have a **Retry** action; the **Sync now** button in Queue restarts sync immediately when a network is available. Removing an entry requires confirmation and restarts sync with the remaining links.
+5. Expand a card and tap **Edit bookmark** to change its URL, title, description, or tags. Sync pauses for the whole queue until you save or cancel, while incoming shares still save locally. **Save changes** updates the same entry, clears its old error, and restarts sync. Back asks whether to discard a changed draft. The draft survives screen rotation; closing the app process discards unsaved edits and releases the pause.
 
-Settings also lets you set default tags and choose whether new bookmarks are marked unread or archived. Enter multiple tags with commas, for example `reading, work notes`, then tap **Save settings**. With a configured connection, existing linkding tags appear as suggestions while you type in Settings or Add Bookmark. You can still enter new tags and save while the server is offline.
+Settings also lets you set default tags and choose whether new bookmarks are marked unread or archived. Enter multiple tags with commas, for example `reading, work notes`, then tap **Save settings**. With a configured connection, existing linkding tags appear as suggestions while you type in Settings or a bookmark form. You can still enter new tags and save while the server is offline.
 
 To route app requests through an HTTP proxy, turn on **Use proxy** in Settings and enter its host and port. Username and password are optional. **Test Connection** uses the proxy settings currently shown in the form, so you can check them before saving. When enabled, the proxy handles linkding requests and page-detail fetches. If it is unavailable, ShareDing does not fall back to a direct request. Proxy passwords are encrypted with Android Keystore; HTTP proxy authentication sends credentials to the proxy without TLS, so use a trusted network.
 

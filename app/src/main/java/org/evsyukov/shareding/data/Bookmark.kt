@@ -50,6 +50,15 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE url = :url LIMIT 1")
     suspend fun findByUrl(url: String): Bookmark?
 
+    @Query("SELECT * FROM bookmarks WHERE id = :id LIMIT 1")
+    suspend fun findById(id: Long): Bookmark?
+
+    @Query("""UPDATE bookmarks SET url = :url, title = :title, sendTitle = :sendTitle,
+        description = :description, tags = :tags, status = 'pending', attempts = 0,
+        lastAttemptAt = NULL, lastError = NULL WHERE id = :id""")
+    suspend fun edit(id: Long, url: String, title: String, sendTitle: Boolean,
+                     description: String, tags: String): Int
+
     @Query("DELETE FROM bookmarks WHERE id = :id")
     suspend fun delete(id: Long)
 
