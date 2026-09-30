@@ -16,6 +16,7 @@ import org.evsyukov.shareding.network.NetworkSelector
 import org.evsyukov.shareding.network.NetworkTracker
 import org.evsyukov.shareding.network.PageMetadataFetcher
 import org.evsyukov.shareding.network.ShortLinkResolver
+import org.evsyukov.shareding.sync.SyncNotifier
 import org.evsyukov.shareding.sync.SyncScheduler
 
 class ShareDingApplication : Application() {
@@ -56,6 +57,7 @@ class AppContainer(application: Application) {
     val networkTracker = NetworkTracker(application)
     val networkSelector = NetworkSelector(networkTracker, api, pageFetcher)
     val scheduler = SyncScheduler(application)
+    val notifier = SyncNotifier(application)
 
     suspend fun deleteQueuedBookmark(id: Long) {
         db.bookmarks().delete(id)
@@ -63,9 +65,13 @@ class AppContainer(application: Application) {
     }
 
     suspend fun recoverQueuedSync() {
-        if (db.bookmarks().count() == 0) return
+        if (db.bookmarks().count() == 0) {
+            notifier.checkStale(null)
+            return
+        }
         val configured = settings.state.value
         if (configured.serverUrl.isBlank() || !configured.hasToken) return
+        notifier.checkStale(db.bookmarks().oldestCreatedAt())
         scheduler.ensureScheduled()
     }
 }

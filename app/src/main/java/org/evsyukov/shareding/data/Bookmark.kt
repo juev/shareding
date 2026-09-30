@@ -47,6 +47,9 @@ interface BookmarkDao {
     @Query("SELECT COUNT(*) FROM bookmarks")
     suspend fun count(): Int
 
+    @Query("SELECT MIN(createdAt) FROM bookmarks")
+    suspend fun oldestCreatedAt(): Long?
+
     @Query("SELECT * FROM bookmarks WHERE url = :url LIMIT 1")
     suspend fun findByUrl(url: String): Bookmark?
 

@@ -37,7 +37,9 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             throw cancel
         } catch (error: Exception) {
             Log.e("ShareDing", "Cannot read API token", error)
-            runCatching { container.settings.recordError("Cannot read API token: ${error.message}") }
+            val message = "Cannot read API token: ${error.message}"
+            runCatching { container.settings.recordError(message) }
+            container.notifier.problem(SyncProblem.TOKEN, message)
             return Result.success()
         } ?: return Result.success()
         if (dao.count() == 0) return Result.success()
@@ -49,6 +51,8 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             val message = error.message ?: "Cannot reach linkding"
             dao.batch(50).forEach { dao.markFailed(it.id, message) }
             runCatching { container.settings.recordError(message) }
+            SyncProblem.of(error)?.let { container.notifier.problem(it, message) }
+            container.notifier.checkStale(dao.oldestCreatedAt())
             return Result.retry()
         }
 
@@ -56,7 +60,10 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         while (!isStopped) {
             val batch = dao.batch(50)
             if (batch.isEmpty()) {
-                if (!failed) runCatching { container.settings.recordSuccess() }
+                if (!failed) {
+                    runCatching { container.settings.recordSuccess() }
+                    container.notifier.resolved()
+                }
                 return if (failed) Result.retry() else Result.success()
             }
             for (bookmark in batch) {
@@ -74,11 +81,15 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                     val message = error.message ?: "Cannot send bookmark"
                     dao.markFailed(bookmark.id, message)
                     runCatching { container.settings.recordError(message) }
+                    SyncProblem.of(error)?.let { container.notifier.problem(it, message) }
                     failed = true
-                    if (error is ApiException && error.code == 401) return Result.retry()
+                    if (error is ApiException && error.code == 401) break
                 }
             }
-            if (failed) return Result.retry()
+            if (failed) {
+                container.notifier.checkStale(dao.oldestCreatedAt())
+                return Result.retry()
+            }
         }
         return Result.retry()
     }

@@ -1,5 +1,6 @@
 package org.evsyukov.shareding
 
+import android.Manifest
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
@@ -7,6 +8,10 @@ import android.text.format.DateUtils
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -103,6 +108,8 @@ import org.evsyukov.shareding.data.Settings
 import org.evsyukov.shareding.network.TagNames
 import org.evsyukov.shareding.network.BookmarkTitles
 import org.evsyukov.shareding.network.Urls
+import org.evsyukov.shareding.sync.NotificationAccess
+import org.evsyukov.shareding.sync.SyncNotifier
 
 class MainActivity : ComponentActivity() {
     private val container get() = (application as ShareDingApplication).container
@@ -180,6 +187,16 @@ private fun ShareDingScreen(container: AppContainer, editor: QueueEditorViewMode
         }
     }
 
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(settings.lastError) {
+        // Ask once, after sync has failed, so the request has an obvious reason.
+        if (settings.lastError.isNotBlank() && container.notifier.shouldRequestPermission()) {
+            container.notifier.markPermissionRequested()
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     LaunchedEffect(editing.notice) {
         editing.notice?.let {
             Toast.makeText(context, it, Toast.LENGTH_LONG).show()
@@ -253,7 +270,7 @@ private fun ShareDingScreen(container: AppContainer, editor: QueueEditorViewMode
             },
             onDelete = { deleteTarget = it }, onEdit = { editor.open(it.id) })
         }
-        else SettingsScreen(settings, padding, serverTags, tagLoadError,
+        else SettingsScreen(settings, container.notifier, padding, serverTags, tagLoadError,
             onSave = { server, token, tags, unread, archived ->
                 if (server.isNotBlank()) Urls.server(server)
                 withContext(Dispatchers.IO) {
@@ -422,6 +439,42 @@ private fun QueueScreen(bookmarks: List<Bookmark>, padding: PaddingValues,
     }
 }
 
+@Composable
+private fun NotificationSetting(notifier: SyncNotifier) {
+    val activity = LocalActivity.current ?: return
+    var access by remember { mutableStateOf(notifier.access(activity)) }
+    // The user may change the permission or channel in system settings and come back.
+    LifecycleResumeEffect(notifier) {
+        access = notifier.access(activity)
+        onPauseOrDispose { }
+    }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        access = notifier.access(activity)
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween) {
+        Column(Modifier.weight(1f)) {
+            Text("Sync problem alerts")
+            Text(if (access == NotificationAccess.ON) "On" else "Off",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (access != NotificationAccess.ON) OutlinedButton(onClick = {
+            if (access == NotificationAccess.REQUEST_PERMISSION) {
+                notifier.markPermissionRequested()
+                permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                activity.startActivity(notifier.settingsIntent())
+            }
+        }) { Text("Turn on") }
+    }
+    Text(if (access == NotificationAccess.ON)
+        "ShareDing notifies you when links cannot be delivered or have waited more than a day."
+        else "Sync keeps working without notifications; problems are shown in Queue.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
 /** Reads the clipboard only when called; returns its first HTTP(S) link. */
 private fun clipboardUrl(context: Context): String? {
     val clip = context.getSystemService(ClipboardManager::class.java)?.primaryClip ?: return null
@@ -586,7 +639,7 @@ internal fun TagInput(value: String, onValueChange: (String) -> Unit, label: Str
 }
 
 @Composable
-private fun SettingsScreen(settings: Settings, padding: PaddingValues,
+private fun SettingsScreen(settings: Settings, notifier: SyncNotifier, padding: PaddingValues,
                            availableTags: List<String>, tagLoadError: Boolean,
                            onSave: suspend (String, String?, String, Boolean, Boolean) -> Unit,
                            onTest: suspend (String, String) -> Unit,
@@ -687,6 +740,9 @@ private fun SettingsScreen(settings: Settings, padding: PaddingValues,
                     Switch(archived, { archived = it; saveStatus = null })
                 }
             }
+        }
+        item {
+            SettingsGroup("Notifications") { NotificationSetting(notifier) }
         }
         item {
             SettingsGroup("About") {

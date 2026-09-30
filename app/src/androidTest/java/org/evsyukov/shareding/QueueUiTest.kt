@@ -45,7 +45,8 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class QueueUiTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 0) val notificationPermission = NotificationPermissionRule()
+    @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
     @Before fun startWithoutServer() {
         val store = (compose.activity.application as ShareDingApplication).container.settings
@@ -266,6 +267,14 @@ class QueueUiTest {
         compose.onNodeWithText("Server URL").assertIsDisplayed()
         assertTrue(compose.onAllNodes(hasText("proxy", substring = true, ignoreCase = true))
             .fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test fun settingsShowGrantedNotificationAlertsAsOn() {
+        compose.onNodeWithText("Settings").performClick()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Privacy policy"))
+        compose.onNodeWithText("Sync problem alerts").assertIsDisplayed()
+        compose.onNodeWithText("On").assertIsDisplayed()
+        compose.onNodeWithText("Turn on").assertDoesNotExist()
     }
 
     @Test fun connectionFailureRemainsVisibleInSettings() {
