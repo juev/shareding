@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.evsyukov.shareding.data.Bookmark
+import org.evsyukov.shareding.network.ShortLinkResolver
 import org.evsyukov.shareding.sync.SyncWorker
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -103,6 +104,42 @@ class SyncWorkerTest {
                 assertEquals(false, body.has("title"))
             } finally {
                 app.container.settings.save("", null, "", true, false)
+            }
+        }
+    }
+
+    @Test fun workerSendsResolvedShortLinkAndKeepsOriginalInNotes() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val tls = AndroidTestTls(InstrumentationRegistry.getInstrumentation().context)
+        val app = context.applicationContext as ShareDingApplication
+        WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
+        val dao = app.container.db.bookmarks()
+        withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+        val defaultResolver = app.container.shortLinks
+        MockWebServer().use { shortener ->
+            MockWebServer().apply { tls.start(this) }.use { server ->
+                try {
+                    app.container.shortLinks = ShortLinkResolver(hosts = setOf(shortener.hostName))
+                    app.container.settings.save(tls.url(server), "test-token", "", true, false)
+                    val short = shortener.url("/abc").toString()
+                    dao.insert(Bookmark(url = short))
+                    shortener.enqueue(MockResponse().setResponseCode(301)
+                        .addHeader("Location", "https://example.com/target"))
+                    server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                    server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+
+                    TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+
+                    assertEquals(0, dao.count())
+                    assertEquals(1, shortener.requestCount)
+                    assertEquals("/api/tags/", server.takeRequest().path)
+                    val body = JsonParser.parseString(server.takeRequest().body.readUtf8()).asJsonObject
+                    assertEquals("https://example.com/target", body.get("url").asString)
+                    assertEquals("Original URL: $short", body.get("notes").asString)
+                } finally {
+                    app.container.shortLinks = defaultResolver
+                    app.container.settings.save("", null, "", true, false)
+                }
             }
         }
     }

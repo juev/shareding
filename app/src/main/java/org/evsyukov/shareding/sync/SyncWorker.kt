@@ -65,7 +65,8 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                 // A bookmark can have been removed since this batch was read.
                 if (dao.markSyncing(bookmark.id) == 0) continue
                 try {
-                    container.api.send(settings.serverUrl, token, bookmark, selectedNetwork)
+                    val outgoing = container.shortLinks.resolve(bookmark, selectedNetwork)
+                    container.api.send(settings.serverUrl, token, outgoing, selectedNetwork)
                     dao.delete(bookmark.id)
                 } catch (cancel: CancellationException) {
                     throw cancel

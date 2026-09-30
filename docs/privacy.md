@@ -12,6 +12,8 @@ When sync runs, ShareDing sends the bookmark fields and API token to your config
 
 If you tap **Fetch page details**, ShareDing may request the bookmarked page to read its title, description, and keyword tags. Background sync leaves page metadata retrieval to linkding and omits titles received through Share. Titles accepted in the Add Bookmark form are sent to linkding. Page-detail requests do not include your linkding API token. Bookmarked pages may use HTTP or HTTPS. An HTTP page request and its response are unencrypted, and the page operator can receive your IP address and ordinary request information.
 
+If a queued link comes from a known URL shortener such as `t.co`, `bit.ly`, or `vk.cc`, the sync worker requests that short link from the shortener to learn its target before sending the bookmark. The request contains the short link but no linkding API token or other bookmark fields. The shortener operator can receive your IP address and ordinary request information. ShareDing does not open the target page; the short link is added to the bookmark notes sent to linkding.
+
 ## Network routes
 
 ShareDing connects directly to your linkding server and to bookmarked pages. It has no proxy setting and ignores a system HTTP proxy. If you use a VPN on your device, Android sends ShareDing's connections through it like other app traffic. Versions before 0.2.1 offered an optional HTTP proxy; updating to a version without it deletes any saved proxy host, port, username, and password from the device.
