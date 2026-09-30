@@ -1,5 +1,7 @@
 package org.evsyukov.shareding
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertHasClickAction
@@ -168,6 +170,28 @@ class QueueUiTest {
         compose.onNodeWithText("Queue").assertDoesNotExist()
         compose.onNodeWithContentDescription("Back to queue").performClick()
         compose.onNodeWithText("Queue is empty").assertIsDisplayed()
+    }
+
+    private fun setClipboard(text: String) {
+        compose.runOnUiThread {
+            compose.activity.getSystemService(ClipboardManager::class.java)
+                .setPrimaryClip(ClipData.newPlainText("test", text))
+        }
+    }
+
+    @Test fun pasteButtonFillsUrlFromClipboard() {
+        setClipboard("see https://example.com/pasted?utm_source=x&id=7 thanks")
+        compose.onNodeWithText("Add bookmark").performClick()
+        compose.onNodeWithContentDescription("Paste link").performClick()
+        compose.onNode(hasText("https://example.com/pasted?id=7")).assertIsDisplayed()
+    }
+
+    @Test fun pasteWithoutLinkKeepsUrlField() {
+        setClipboard("no link here")
+        compose.onNodeWithText("Add bookmark").performClick()
+        compose.onNodeWithText("URL").performTextInput("https://example.com/typed")
+        compose.onNodeWithContentDescription("Paste link").performClick()
+        compose.onNode(hasText("https://example.com/typed")).assertIsDisplayed()
     }
 
     @Test fun failedBookmarkShowsRetryAndPendingBookmarkDoesNot() {
