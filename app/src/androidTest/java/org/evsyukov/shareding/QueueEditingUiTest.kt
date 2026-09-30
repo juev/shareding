@@ -30,7 +30,8 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class QueueEditingUiTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 0) val notificationPermission = NotificationPermissionRule()
+    @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
     private lateinit var app: ShareDingApplication
 
     @Before fun startWithoutLinkding() {

@@ -15,6 +15,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import org.evsyukov.shareding.data.Bookmark
 
 object Urls {
+    const val HTTPS_REQUIRED = "Use an HTTPS linkding server URL"
+
     fun parse(value: String): URI {
         val uri = URI(value.trim())
         require(uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) {
@@ -28,7 +30,7 @@ object Urls {
 
     fun server(value: String): URI {
         val uri = parse(value)
-        require(uri.scheme.equals("https", true)) { "Use an HTTPS linkding server URL" }
+        require(uri.scheme.equals("https", true)) { HTTPS_REQUIRED }
         require(uri.rawQuery == null && uri.rawFragment == null) { "Server URL cannot contain query or fragment" }
         return URI(uri.scheme.lowercase(), null, uri.host, uri.port,
             uri.path.trimEnd('/') + "/", null, null)
