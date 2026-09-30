@@ -441,7 +441,7 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
             if (saving) return@launch
             saving = true
             try {
-                val validUrl = Urls.parse(url).toString()
+                val validUrl = Urls.bookmark(url)
                 val defaults = container.settings.state.value
                 val id = withContext(Dispatchers.IO) {
                     container.db.bookmarks().insert(Bookmark(url = validUrl,

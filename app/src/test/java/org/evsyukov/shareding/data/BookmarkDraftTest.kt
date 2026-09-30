@@ -18,6 +18,13 @@ class BookmarkDraftTest {
             lastAttemptAt = null), edited)
     }
 
+    @Test fun editedUrlDropsTrackingParameters() {
+        val original = Bookmark(url = "https://example.com/old")
+        val edited = BookmarkDraft(original).copy(url = "https://example.com/new?utm_medium=x&page=2")
+            .applyTo(original)
+        assertEquals("https://example.com/new?page=2", edited.url)
+    }
+
     @Test fun changedTitleBecomesManualSingleLineAndLimitedTo512CodePoints() {
         val original = Bookmark(url = "https://example.com", title = "Shared\nPreview")
         val edited = BookmarkDraft(original).copy(title = "  Custom\n  title " + "😀".repeat(600))

@@ -16,7 +16,7 @@ Saving a link should not depend on whether your linkding server is reachable at 
 ## How it works
 
 1. Share an HTTP(S) link to ShareDing from a browser or another app, or enter it in the Add Bookmark form. You can save links before configuring the server.
-2. ShareDing writes the bookmark to a Room database on the device before attempting a network request. The browser stays visible; a short `Saved to queue` Toast appears only after the local write succeeds. Invalid links and local save errors get a different message.
+2. ShareDing removes known tracking parameters such as `utm_*`, `fbclid`, and `si` on YouTube and Spotify links, then writes the bookmark to a Room database on the device before attempting a network request. The browser stays visible; a short `Saved to queue` Toast appears only after the local write succeeds. Invalid links and local save errors get a different message.
 3. WorkManager runs sync when a network is available. ShareDing checks the configured linkding server itself, so a server reachable through LAN or VPN does not need public internet access.
 4. After linkding accepts the bookmark, ShareDing removes it from the queue. Connection and server errors leave it queued for another attempt. Retries use exponential backoff starting at 30 seconds; Android may run them later than the scheduled time.
 

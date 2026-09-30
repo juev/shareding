@@ -15,7 +15,7 @@ data class BookmarkDraft(
     fun applyTo(original: Bookmark): Bookmark {
         val changedTitle = title != original.title
         val normalizedTitle = if (changedTitle) BookmarkTitles.normalize(title) else original.title
-        return original.copy(url = Urls.parse(url).toString(), title = normalizedTitle,
+        return original.copy(url = Urls.bookmark(url), title = normalizedTitle,
             sendTitle = if (changedTitle) normalizedTitle.isNotBlank() else original.sendTitle,
             description = description.trim(), tags = TagNames.parse(tags).joinToString(", "),
             status = "pending", attempts = 0, lastAttemptAt = null, lastError = null)

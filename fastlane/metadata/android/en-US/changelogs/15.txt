@@ -1,1 +1,1 @@
-Remove the HTTP proxy setting: proxy credentials were sent without TLS. Use a VPN on your device to reach a server through another route. Updating deletes any saved proxy host, port, username, and password.
+Remove the HTTP proxy setting: proxy credentials were sent without TLS. Use a VPN on your device to reach a server through another route. Updating deletes any saved proxy host, port, username, and password. Remove tracking parameters such as utm_*, fbclid, and YouTube or Spotify si from saved links.

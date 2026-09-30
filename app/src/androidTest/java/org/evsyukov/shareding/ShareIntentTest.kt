@@ -46,6 +46,26 @@ class ShareIntentTest {
         assertTrue(found)
     }
 
+    @Test fun shareStoresUrlWithoutTrackingParameters() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val clean = "https://example.com/tracked-${System.nanoTime()}?id=5"
+        val intent = Intent(context, ShareActivity::class.java).apply {
+            action = Intent.ACTION_SEND
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, "Look: ${clean.replace("?id=5", "?utm_source=share&id=5&fbclid=abc")}")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+        val dao = (context.applicationContext as ShareDingApplication).container.db.bookmarks()
+        var bookmark: org.evsyukov.shareding.data.Bookmark? = null
+        for (attempt in 0 until 30) {
+            bookmark = dao.findByUrl(clean)
+            if (bookmark != null) break
+            delay(100)
+        }
+        assertEquals(clean, bookmark?.url)
+    }
+
     @Test fun browserSharePersistsUnicodeTitle() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val url = "https://example.com/browser-${System.nanoTime()}"
