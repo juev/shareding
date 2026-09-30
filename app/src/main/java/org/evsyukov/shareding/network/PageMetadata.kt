@@ -26,7 +26,7 @@ object PageMetadataParser {
             ?: meta(page, "property", "og:description")
             ?: meta(page, "name", "twitter:description")).orEmpty().trim().take(1000)
         val keywords = meta(page, "name", "keywords").orEmpty()
-        val tags = TagNames.parse(keywords).take(20).joinToString(", ")
+        val tags = TagNames.parse(keywords).filter(TagNames::fits).take(20).joinToString(", ")
         return PageMetadata(title, description, tags)
     }
 

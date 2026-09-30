@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.Bookmark
+import org.evsyukov.shareding.network.BookmarkTitles
 import org.evsyukov.shareding.network.Urls
 
 /** The link and title an app passes with `ACTION_SEND`. */
@@ -26,7 +27,7 @@ internal data class SharedLink(val url: String, val title: String) {
             val url = Urls.sharedText(text) ?: return null
             val title = intent.getStringExtra(Intent.EXTRA_TITLE)
                 ?: intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()
-            return SharedLink(url, title)
+            return SharedLink(url, BookmarkTitles.shared(title, url))
         }
     }
 }

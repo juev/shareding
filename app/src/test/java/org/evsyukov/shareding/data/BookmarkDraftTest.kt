@@ -2,6 +2,7 @@ package org.evsyukov.shareding.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -47,5 +48,11 @@ class BookmarkDraftTest {
         val edited = BookmarkDraft(original).copy(title = " \n ").applyTo(original)
         assertEquals("", edited.title)
         assertFalse(edited.sendTitle)
+    }
+
+    @Test fun tagTooLongForLinkdingIsRejected() {
+        val original = Bookmark(url = "https://example.com")
+        val draft = BookmarkDraft(original).copy(tags = "ok, " + "a".repeat(65))
+        assertThrows(IllegalArgumentException::class.java) { draft.applyTo(original) }
     }
 }

@@ -19,6 +19,12 @@ class PageMetadataTest {
             PageMetadataParser.parse(html))
     }
 
+    @Test fun keywordsTooLongForLinkdingTagsAreSkipped() {
+        val long = "a".repeat(TagNames.MAX_LENGTH + 1)
+        val html = "<html><head><meta name='keywords' content='reading, $long, work'></head></html>"
+        assertEquals("reading, work", PageMetadataParser.parse(html).tags)
+    }
+
     @Test fun absentMetadataDoesNotEraseManualValues() {
         val found = PageMetadataParser.parse("<html><head><title>Page title</title></head></html>")
         assertEquals(PageMetadata("My title", "My notes", "local"),

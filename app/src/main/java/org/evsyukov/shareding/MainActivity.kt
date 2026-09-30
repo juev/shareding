@@ -554,10 +554,12 @@ internal fun AddBookmarkScreen(container: AppContainer, availableTags: List<Stri
             try {
                 val validUrl = Urls.bookmark(url)
                 val defaults = container.settings.state.value
+                val allTags = TagNames.combine(defaults.defaultTags, tags)
+                TagNames.requireValid(allTags)
                 val id = withContext(Dispatchers.IO) {
                     container.db.bookmarks().insert(Bookmark(url = validUrl,
                         title = BookmarkTitles.normalize(title), sendTitle = title.isNotBlank(),
-                        description = description.trim(), tags = TagNames.combine(defaults.defaultTags, tags),
+                        description = description.trim(), tags = allTags,
                         unread = defaults.unread, archived = defaults.archived,
                         metadataFetched = title.isNotBlank()))
                 }
