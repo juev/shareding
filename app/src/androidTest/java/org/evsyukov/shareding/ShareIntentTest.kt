@@ -49,7 +49,7 @@ class ShareIntentTest {
     @Test fun browserSharePersistsUnicodeTitle() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val url = "https://example.com/browser-${System.nanoTime()}"
-        val title = "Пример страницы — café 東京"
+        val title = "Bitwarden\nПример страницы — café 東京\n" + "Page preview ".repeat(60)
         val intent = Intent(context, ShareActivity::class.java).apply {
             action = Intent.ACTION_SEND
             type = "text/plain"
@@ -66,6 +66,7 @@ class ShareIntentTest {
             delay(100)
         }
         assertEquals(title, bookmark?.title)
+        assertEquals(false, bookmark?.sendTitle)
     }
 
     @Test fun invalidShareDoesNotEnterQueue() = runBlocking {

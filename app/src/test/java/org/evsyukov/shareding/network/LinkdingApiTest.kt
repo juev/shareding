@@ -2,8 +2,11 @@ package org.evsyukov.shareding.network
 
 import com.google.gson.JsonParser
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.evsyukov.shareding.data.Bookmark
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,6 +40,7 @@ class LinkdingApiTest {
             val bookmark = Bookmark(
                 url = "https://example.com/%D1%81%D1%82%D1%80%D0%B0%D0%BD%D0%B8%D1%86%D0%B0?q=caf%C3%A9",
                 title = "Заголовок — café 東京",
+                sendTitle = true,
                 description = "Описание — déjà vu",
             )
 
@@ -76,13 +80,86 @@ class LinkdingApiTest {
     @Test fun reportsServerError() = runBlocking {
         TlsMockServer().use { tls ->
             val server = tls.server
-            server.enqueue(MockResponse().setResponseCode(503))
+            server.enqueue(MockResponse().setResponseCode(503).setBody("""{"detail":"temporarily unavailable"}"""))
             try {
                 tls.api().check(server.url("/").toString(), "secret")
                 fail("HTTP error must fail")
             } catch (error: ApiException) {
                 assertEquals(503, error.code)
+                assertTrue(error.message.orEmpty().contains("linkding returned HTTP 503"))
+                assertTrue(error.message.orEmpty().contains("""{"detail":"temporarily unavailable"}"""))
             }
+        }
+    }
+
+    @Test fun reportsPlainTextErrorBody() = runBlocking {
+        TlsMockServer().use { tls ->
+            tls.server.enqueue(MockResponse().setResponseCode(502).setBody("upstream failed"))
+            val error = runCatching { tls.api().check(tls.server.url("/").toString(), "secret") }
+                .exceptionOrNull() as ApiException
+            assertEquals(502, error.code)
+            assertTrue(error.message.orEmpty().contains("upstream failed"))
+        }
+    }
+
+    @Test fun emptyErrorBodyUsesHttpFallback() = runBlocking {
+        TlsMockServer().use { tls ->
+            tls.server.enqueue(MockResponse().setResponseCode(503))
+            val error = runCatching { tls.api().check(tls.server.url("/").toString(), "secret") }
+                .exceptionOrNull() as ApiException
+            assertEquals(503, error.code)
+            assertEquals("linkding returned HTTP 503", error.message)
+        }
+    }
+
+    @Test fun pendingRequestIsCancelledByTimeoutWithoutSuccess() = runBlocking {
+        TlsMockServer().use { tls ->
+            tls.server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+            var succeeded = false
+            val error = runCatching {
+                withTimeout(500) {
+                    tls.api().check(tls.server.url("/").toString(), "secret")
+                    succeeded = true
+                }
+            }.exceptionOrNull()
+            assertTrue(error is TimeoutCancellationException)
+            assertFalse(succeeded)
+            assertEquals(1, tls.server.requestCount)
+        }
+    }
+
+    @Test fun omitsDefaultTitleEvenWhenLongAndMultiline() = runBlocking {
+        TlsMockServer().use { tls ->
+            tls.server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+            val bookmark = Bookmark(url = "https://example.com", title = "first line\n" + "x".repeat(600))
+            tls.api().send(tls.server.url("/").toString(), "secret", bookmark)
+            val body = JsonParser.parseString(tls.server.takeRequest().body.readUtf8()).asJsonObject
+            assertFalse(body.has("title"))
+        }
+    }
+
+    @Test fun omitsBlankManualTitle() = runBlocking {
+        TlsMockServer().use { tls ->
+            tls.server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+            tls.api().send(tls.server.url("/").toString(), "secret",
+                Bookmark(url = "https://example.com", title = " \n\t ", sendTitle = true))
+            val body = JsonParser.parseString(tls.server.takeRequest().body.readUtf8()).asJsonObject
+            assertFalse(body.has("title"))
+        }
+    }
+
+    @Test fun truncatesManualTitleTo512CodePointsWithoutSplittingSurrogatePair() = runBlocking {
+        TlsMockServer().use { tls ->
+            tls.server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+            val title = "a".repeat(511) + "😀" + "b" + "\nextra line"
+            tls.api().send(tls.server.url("/").toString(), "secret",
+                Bookmark(url = "https://example.com", title = title, sendTitle = true))
+            val body = JsonParser.parseString(tls.server.takeRequest().body.readUtf8()).asJsonObject
+            val sentTitle = body.get("title").asString
+            assertEquals(512, sentTitle.codePointCount(0, sentTitle.length))
+            assertTrue(sentTitle.endsWith("😀"))
+            assertFalse(sentTitle.contains('\n'))
+            assertFalse(sentTitle.last().isHighSurrogate())
         }
     }
 

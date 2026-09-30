@@ -66,7 +66,7 @@ class ProxyRoutingTest {
                 LinkdingApi().check("https://origin.invalid/", "secret", proxy =
                     ProxyConfig(true, proxy.hostName, proxy.port))
             }.exceptionOrNull()
-            assertEquals("Proxy authentication failed", error?.message)
+            assertEquals("Proxy authentication failed (HTTP 407)", error?.message)
         }
     }
 

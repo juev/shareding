@@ -1,6 +1,7 @@
 package org.evsyukov.shareding.data
 
 import androidx.room.Dao
+import androidx.room.ColumnInfo
 import androidx.room.Database
 import androidx.room.Entity
 import androidx.room.Index
@@ -9,6 +10,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "bookmarks", indices = [Index(value = ["url"], unique = true)])
@@ -16,6 +19,7 @@ data class Bookmark(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val url: String,
     val title: String = "",
+    @ColumnInfo(defaultValue = "0") val sendTitle: Boolean = false,
     val description: String = "",
     val notes: String = "",
     val tags: String = "",
@@ -50,7 +54,7 @@ interface BookmarkDao {
     suspend fun delete(id: Long)
 
     @Query("UPDATE bookmarks SET status = 'syncing', attempts = attempts + 1, lastAttemptAt = :at, lastError = NULL WHERE id = :id")
-    suspend fun markSyncing(id: Long, at: Long = System.currentTimeMillis())
+    suspend fun markSyncing(id: Long, at: Long = System.currentTimeMillis()): Int
 
     @Query("UPDATE bookmarks SET status = 'failed', lastError = :message WHERE id = :id")
     suspend fun markFailed(id: Long, message: String)
@@ -68,7 +72,15 @@ interface BookmarkDao {
     suspend fun markMetadataFetched(id: Long)
 }
 
-@Database(entities = [Bookmark::class], version = 1, exportSchema = false)
+@Database(entities = [Bookmark::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookmarks(): BookmarkDao
+
+    companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE bookmarks ADD COLUMN sendTitle INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+    }
 }

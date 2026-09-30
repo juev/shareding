@@ -20,8 +20,8 @@ object PageMetadataParser {
     fun parse(html: String): PageMetadata = parse(Jsoup.parse(html))
 
     fun parse(page: Document): PageMetadata {
-        val title = (meta(page, "property", "og:title") ?: meta(page, "name", "twitter:title")
-            ?: page.title()).trim().take(200)
+        val title = BookmarkTitles.normalize(meta(page, "property", "og:title")
+            ?: meta(page, "name", "twitter:title") ?: page.title())
         val description = (meta(page, "name", "description")
             ?: meta(page, "property", "og:description")
             ?: meta(page, "name", "twitter:description")).orEmpty().trim().take(1000)
@@ -41,11 +41,11 @@ class PageMetadataFetcher(private val proxyProvider: () -> ProxyConfig = { Proxy
                       proxy: ProxyConfig? = null): PageMetadata? = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(Urls.parse(url).toURL()).build()
         ProxyHttpClient.create(proxy ?: proxyProvider(), network, 5, 5)
-            .newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return@withContext null
-            val body = response.body ?: return@withContext null
+            .newCall(request).executeCancellable { response ->
+            if (!response.isSuccessful) return@executeCancellable null
+            val body = response.body ?: return@executeCancellable null
             if (body.contentType()?.type != "text" || body.contentType()?.subtype != "html") {
-                return@withContext null
+                return@executeCancellable null
             }
             val bytes = ByteArray(131_072)
             val length = body.byteStream().use { stream ->

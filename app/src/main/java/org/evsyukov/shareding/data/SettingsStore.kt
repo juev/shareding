@@ -20,6 +20,7 @@ data class Settings(
     val unread: Boolean = true,
     val archived: Boolean = false,
     val lastSync: Long = 0,
+    val lastSyncAttempt: Long = 0,
     val lastError: String = "",
     val hasToken: Boolean = false,
     val proxyEnabled: Boolean = false,
@@ -42,6 +43,7 @@ class SettingsStore(context: Context) {
         unread = prefs.getBoolean("unread", true),
         archived = prefs.getBoolean("archived", false),
         lastSync = prefs.getLong("last_sync", 0),
+        lastSyncAttempt = prefs.getLong("last_sync_attempt", prefs.getLong("last_sync", 0)),
         lastError = prefs.getString("last_error", "") ?: "",
         hasToken = secrets.contains("token"),
         proxyEnabled = prefs.getBoolean("proxy_enabled", false),
@@ -92,13 +94,15 @@ class SettingsStore(context: Context) {
         secrets.getString("proxy_password", null)?.let(secretCipher::decrypt)
 
     fun recordSuccess() {
-        check(prefs.edit().putLong("last_sync", System.currentTimeMillis())
+        val now = System.currentTimeMillis()
+        check(prefs.edit().putLong("last_sync", now).putLong("last_sync_attempt", now)
             .putString("last_error", "").commit())
         mutable.value = read()
     }
 
     fun recordError(message: String) {
-        check(prefs.edit().putString("last_error", message).commit())
+        check(prefs.edit().putString("last_error", message)
+            .putLong("last_sync_attempt", System.currentTimeMillis()).commit())
         mutable.value = read()
     }
 }

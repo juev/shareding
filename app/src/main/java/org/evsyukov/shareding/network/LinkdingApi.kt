@@ -102,7 +102,10 @@ class LinkdingApi(
         withContext(Dispatchers.IO) {
             val json = JsonObject().apply {
                 addProperty("url", bookmark.url)
-                addProperty("title", bookmark.title)
+                if (bookmark.sendTitle) {
+                    val title = BookmarkTitles.normalize(bookmark.title)
+                    if (title.isNotEmpty()) addProperty("title", title)
+                }
                 addProperty("description", bookmark.description)
                 addProperty("notes", bookmark.notes)
                 add("tag_names", JsonArray().apply {
@@ -116,7 +119,7 @@ class LinkdingApi(
 
     private fun endpoint(server: String, path: String): URL = Urls.server(server).resolve(path).toURL()
 
-    private fun request(url: URL, token: String, method: String, body: String?, network: Network?,
+    private suspend fun request(url: URL, token: String, method: String, body: String?, network: Network?,
                         proxy: ProxyConfig?,
                         readBody: Boolean = false): String? {
         val config = proxy ?: proxyProvider()
@@ -125,21 +128,22 @@ class LinkdingApi(
             .header("Accept", "application/json")
             .method(method, body?.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
-        val response = try {
-            clientFactory(config, network, 10, 15).newCall(request).execute()
+        return try {
+            clientFactory(config, network, 10, 15).newCall(request).executeCancellable { response ->
+                val code = response.code
+                if (code !in 200..299) {
+                    val reason = if (code == 407 && config.enabled) "Proxy authentication failed (HTTP 407)"
+                        else "linkding returned HTTP $code"
+                    val detail = response.body?.string().orEmpty().trim()
+                    throw ApiException(code, if (detail.isEmpty()) reason else "$reason\n$detail")
+                }
+                if (readBody) response.body?.string() else null
+            }
         } catch (error: IOException) {
             if (config.enabled && error.message == "Failed to authenticate with proxy") {
-                throw ApiException(407, "Proxy authentication failed")
+                throw ApiException(407, "Proxy authentication failed (HTTP 407)")
             }
             throw error
-        }
-        response.use {
-            val code = response.code
-            if (code !in 200..299) {
-                if (code == 407 && config.enabled) throw ApiException(code, "Proxy authentication failed")
-                throw ApiException(code, "linkding returned HTTP $code")
-            }
-            return if (readBody) response.body?.string() else null
         }
     }
 }

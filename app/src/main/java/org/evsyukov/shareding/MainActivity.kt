@@ -9,6 +9,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -37,6 +39,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -78,9 +82,12 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.work.WorkInfo
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.Dispatchers
@@ -91,6 +98,7 @@ import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.Bookmark
 import org.evsyukov.shareding.data.Settings
 import org.evsyukov.shareding.network.TagNames
+import org.evsyukov.shareding.network.BookmarkTitles
 import org.evsyukov.shareding.network.Urls
 
 class MainActivity : ComponentActivity() {
@@ -141,6 +149,7 @@ class MainActivity : ComponentActivity() {
 private fun ShareDingScreen(container: AppContainer) {
     val bookmarks by container.db.bookmarks().observeAll().collectAsState(initial = emptyList())
     val settings by container.settings.state.collectAsState()
+    val workInfos by container.scheduler.workInfos.collectAsState(initial = emptyList())
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<Bookmark?>(null) }
@@ -148,6 +157,22 @@ private fun ShareDingScreen(container: AppContainer) {
     var tagLoadError by remember { mutableStateOf(false) }
     var tagRefresh by remember { mutableIntStateOf(0) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val context = LocalContext.current
+    var scheduling by remember { mutableStateOf(false) }
+    val runQueueAction: (suspend () -> Unit) -> Unit = { action ->
+        scope.launch {
+            scheduling = true
+            try {
+                action()
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                Toast.makeText(context, error.message ?: "Cannot update queue", Toast.LENGTH_LONG).show()
+            } finally {
+                scheduling = false
+            }
+        }
+    }
 
     LaunchedEffect(settings.serverUrl, settings.hasToken, selectedTab, showAdd, tagRefresh) {
         serverTags = emptyList()
@@ -176,8 +201,8 @@ private fun ShareDingScreen(container: AppContainer) {
         topBar = {
             TopAppBar(title = { Text(if (selectedTab == 0) "Queue" else "Settings") }, actions = {
                 if (selectedTab == 0) IconButton(onClick = {
-                    scope.launch { container.scheduler.requestSync() }
-                }) {
+                    runQueueAction { container.scheduler.restartSync() }
+                }, enabled = !scheduling) {
                     Icon(Icons.Default.Refresh, contentDescription = "Sync now")
                 }
             })
@@ -196,16 +221,19 @@ private fun ShareDingScreen(container: AppContainer) {
             }
         },
     ) { padding ->
-        if (selectedTab == 0) QueueScreen(bookmarks, padding,
+        if (selectedTab == 0) Column(Modifier.fillMaxSize().padding(padding)) {
+            QueueSyncStatus(settings, workInfos, bookmarks.size)
+            QueueScreen(bookmarks, PaddingValues(0.dp),
             onAdd = { showAdd = true },
             onRetry = { bookmark ->
-                scope.launch {
+                runQueueAction {
                     withContext(Dispatchers.IO) { container.db.bookmarks().markPending(bookmark.id) }
-                    container.scheduler.requestSync()
+                    container.scheduler.restartSync()
                 }
             },
             onDelete = { deleteTarget = it })
-        else SettingsScreen(settings, bookmarks.size, padding, serverTags, tagLoadError,
+        }
+        else SettingsScreen(settings, padding, serverTags, tagLoadError,
             onSave = { server, token, tags, unread, archived, proxyEnabled, proxyHost, proxyPort,
                        proxyUsername, proxyPassword ->
                 if (server.isNotBlank()) Urls.server(server)
@@ -214,24 +242,49 @@ private fun ShareDingScreen(container: AppContainer) {
                         proxyUsername, proxyPassword)
                     container.settings.save(server.trim(), token, tags.trim(), unread, archived, proxy)
                 }
-                container.scheduler.requestSync()
+                container.scheduler.restartSync()
             },
             onTest = { server, token, proxyEnabled, proxyHost, proxyPort, proxyUsername, proxyPassword ->
                 val actualToken = token.ifBlank { container.settings.token().orEmpty() }
                 val proxy = container.settings.resolveProxy(proxyEnabled, proxyHost, proxyPort,
                     proxyUsername, proxyPassword)
                 container.networkSelector.checkAndSelect(server, actualToken, proxy = proxy)
-            }, onSync = { scope.launch { container.scheduler.requestSync() } },
+            },
             onRefreshTags = { tagRefresh++ })
     }
     deleteTarget?.let { target ->
         AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text("Delete bookmark?") },
             text = { Text(target.url) }, confirmButton = {
                 TextButton(onClick = {
-                    scope.launch { withContext(Dispatchers.IO) { container.db.bookmarks().delete(target.id) } }
+                    runQueueAction { container.deleteQueuedBookmark(target.id) }
                     deleteTarget = null
                 }) { Text("Delete") }
             }, dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } })
+    }
+}
+
+@Composable
+private fun QueueSyncStatus(settings: Settings, workInfos: List<WorkInfo>, queueCount: Int) {
+    val active = workInfos.filter { !it.state.isFinished }
+    val status = when {
+        active.any { it.state == WorkInfo.State.RUNNING } -> "Syncing…"
+        queueCount > 0 && (settings.serverUrl.isBlank() || !settings.hasToken) -> "Set up linkding in Settings to sync"
+        queueCount > 0 && active.isNotEmpty() -> "Waiting for network or retry"
+        else -> "Ready to sync"
+    }
+    Surface(tonalElevation = 1.dp) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(status, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val lastAttempt = if (settings.lastSyncAttempt == 0L) "Last sync: Never" else {
+                val result = if (settings.lastError.isBlank()) "Successful" else "Failed"
+                "Last sync: $result · ${DateFormat.getDateTimeInstance().format(Date(settings.lastSyncAttempt))}"
+            }
+            Text(lastAttempt, style = MaterialTheme.typography.bodySmall,
+                color = if (settings.lastError.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.error)
+        }
     }
 }
 
@@ -263,20 +316,35 @@ private fun QueueScreen(bookmarks: List<Bookmark>, padding: PaddingValues,
     LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items(bookmarks, key = { it.id }) { bookmark ->
-            Card(shape = RoundedCornerShape(16.dp)) {
+            var expanded by rememberSaveable(bookmark.id) { mutableStateOf(false) }
+            Card(onClick = { expanded = !expanded }, shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.animateContentSize().semantics {
+                    stateDescription = if (expanded) "Expanded" else "Collapsed"
+                }) {
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f)) {
-                            Text(bookmark.title.ifBlank { bookmark.url }, maxLines = 2,
-                                overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+                            val details: @Composable () -> Unit = {
+                                Text(bookmark.title.ifBlank { "Untitled bookmark" },
+                                    maxLines = if (expanded) Int.MAX_VALUE else 2,
+                                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+                                Spacer(Modifier.height(4.dp))
+                                Text(bookmark.url, maxLines = if (expanded) Int.MAX_VALUE else 1,
+                                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (expanded) SelectionContainer { Column { details() } } else details()
                             Spacer(Modifier.height(4.dp))
-                            val host = android.net.Uri.parse(bookmark.url).host ?: bookmark.url
                             val age = if (now - bookmark.createdAt < DateUtils.MINUTE_IN_MILLIS) "Just now"
                                 else DateUtils.getRelativeTimeSpanString(bookmark.createdAt, now,
                                     DateUtils.MINUTE_IN_MILLIS)
-                            Text("$host · $age", maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            Text(age.toString(), maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { expanded = !expanded }) {
+                            Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = "${if (expanded) "Hide" else "Show"} details for ${bookmark.url}")
                         }
                         IconButton(onClick = { onDelete(bookmark) }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete ${bookmark.url}")
@@ -312,7 +380,17 @@ private fun QueueScreen(bookmarks: List<Bookmark>, padding: PaddingValues,
                     }
                     if (failed) {
                         bookmark.lastError?.let {
-                            Text(it, color = MaterialTheme.colorScheme.error,
+                            if (expanded) {
+                                Spacer(Modifier.height(8.dp))
+                                Surface(color = MaterialTheme.colorScheme.errorContainer,
+                                    shape = RoundedCornerShape(8.dp)) {
+                                    SelectionContainer {
+                                        Text(it, color = MaterialTheme.colorScheme.onErrorContainer,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            modifier = Modifier.fillMaxWidth().padding(12.dp))
+                                    }
+                                }
+                            } else Text(it, color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.bodySmall, maxLines = 2,
                                 overflow = TextOverflow.Ellipsis)
                         }
@@ -350,7 +428,8 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
                 val validUrl = Urls.parse(url).toString()
                 val defaults = container.settings.state.value
                 val id = withContext(Dispatchers.IO) {
-                    container.db.bookmarks().insert(Bookmark(url = validUrl, title = title.trim(),
+                    container.db.bookmarks().insert(Bookmark(url = validUrl,
+                        title = BookmarkTitles.normalize(title), sendTitle = title.isNotBlank(),
                         description = description.trim(), tags = TagNames.combine(defaults.defaultTags, tags),
                         unread = defaults.unread, archived = defaults.archived,
                         metadataFetched = title.isNotBlank()))
@@ -391,8 +470,10 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(url, { url = it; metadataStatus = null }, modifier = Modifier.fillMaxWidth(),
                 label = { Text("URL") }, singleLine = true)
-            OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(),
-                label = { Text("Title") })
+            OutlinedTextField(title, { title = BookmarkTitles.limit(it.replace(Regex("[\r\n]+"), " ")) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Title") }, singleLine = true,
+                supportingText = { Text("Optional · up to 512 characters. Leave empty for linkding to fetch it.") })
             OutlinedTextField(description, { description = it }, modifier = Modifier.fillMaxWidth(),
                 label = { Text("Description") })
             TagInput(tags, { tags = it }, "Tags", availableTags,
@@ -468,12 +549,11 @@ private fun TagInput(value: String, onValueChange: (String) -> Unit, label: Stri
 }
 
 @Composable
-private fun SettingsScreen(settings: Settings, queueCount: Int, padding: PaddingValues,
+private fun SettingsScreen(settings: Settings, padding: PaddingValues,
                            availableTags: List<String>, tagLoadError: Boolean,
                            onSave: suspend (String, String?, String, Boolean, Boolean,
                                Boolean, String, String, String, String) -> Unit,
                            onTest: suspend (String, String, Boolean, String, String, String, String) -> Unit,
-                           onSync: () -> Unit,
                            onRefreshTags: () -> Unit) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -623,16 +703,6 @@ private fun SettingsScreen(settings: Settings, queueCount: Int, padding: Padding
                     Text("Archive")
                     Switch(archived, { archived = it; saveStatus = null })
                 }
-            }
-        }
-        item {
-            SettingsGroup("Sync") {
-                Text("Queue: $queueCount")
-                Text("Last sync: " + if (settings.lastSync == 0L) "Never" else
-                    DateFormat.getDateTimeInstance().format(Date(settings.lastSync)))
-                if (settings.lastError.isNotBlank()) Text(settings.lastError,
-                    color = MaterialTheme.colorScheme.error)
-                OutlinedButton(onClick = onSync) { Text("Sync Now") }
             }
         }
         item {

@@ -44,13 +44,19 @@ class ShareDingApplication : Application() {
 }
 
 class AppContainer(application: Application) {
-    val db: AppDatabase = Room.databaseBuilder(application, AppDatabase::class.java, "bookmarks.db").build()
+    val db: AppDatabase = Room.databaseBuilder(application, AppDatabase::class.java, "bookmarks.db")
+        .addMigrations(AppDatabase.MIGRATION_1_2).build()
     val settings = SettingsStore(application)
     val api = LinkdingApi { settings.proxyConfig() }
     val pageFetcher = PageMetadataFetcher { settings.proxyConfig() }
     val networkTracker = NetworkTracker(application)
     val networkSelector = NetworkSelector(networkTracker, api, pageFetcher)
     val scheduler = SyncScheduler(application)
+
+    suspend fun deleteQueuedBookmark(id: Long) {
+        db.bookmarks().delete(id)
+        scheduler.restartSync()
+    }
 
     suspend fun recoverQueuedSync() {
         if (db.bookmarks().count() == 0) return

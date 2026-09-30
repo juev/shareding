@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import org.evsyukov.shareding.ShareDingApplication
 import org.evsyukov.shareding.network.ApiException
 
@@ -15,6 +17,8 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         throw cancel
     } catch (error: Exception) {
         Log.e("ShareDing", "Sync worker could not finish", error)
+        val container = (applicationContext.applicationContext as ShareDingApplication).container
+        runCatching { container.settings.recordError(error.message ?: "Cannot sync queue") }
         Result.retry()
     }
 
@@ -24,7 +28,9 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         dao.recoverInterrupted()
         val settings = container.settings.state.value
         if (settings.serverUrl.isBlank() || !settings.hasToken) return Result.success()
-        val token = try { container.settings.token() } catch (error: Exception) {
+        val token = try { container.settings.token() } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (error: Exception) {
             Log.e("ShareDing", "Cannot read API token", error)
             runCatching { container.settings.recordError("Cannot read API token: ${error.message}") }
             return Result.success()
@@ -46,22 +52,18 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         var failed = false
         while (!isStopped) {
             val batch = dao.batch(50)
-            if (batch.isEmpty()) return if (failed) Result.retry() else Result.success()
+            if (batch.isEmpty()) {
+                if (!failed) runCatching { container.settings.recordSuccess() }
+                return if (failed) Result.retry() else Result.success()
+            }
             for (bookmark in batch) {
                 if (isStopped) return Result.retry()
-                val title = if (bookmark.title.isBlank() && !bookmark.metadataFetched) {
-                    try { container.networkSelector.fetchPageMetadata(bookmark.url, selectedNetwork, proxy)
-                        ?.title.orEmpty() }
-                    catch (cancel: CancellationException) { throw cancel }
-                    catch (_: Exception) { "" }
-                } else bookmark.title
-                if (!bookmark.metadataFetched) dao.markMetadataFetched(bookmark.id)
-                if (title.isNotBlank() && bookmark.title.isBlank()) dao.updateTitleIfEmpty(bookmark.id, title)
-                dao.markSyncing(bookmark.id)
+                currentCoroutineContext().ensureActive()
+                // A bookmark can have been removed since this batch was read.
+                if (dao.markSyncing(bookmark.id) == 0) continue
                 try {
-                    container.api.send(settings.serverUrl, token, bookmark.copy(title = title), selectedNetwork, proxy)
+                    container.api.send(settings.serverUrl, token, bookmark, selectedNetwork, proxy)
                     dao.delete(bookmark.id)
-                    runCatching { container.settings.recordSuccess() }
                 } catch (cancel: CancellationException) {
                     throw cancel
                 } catch (error: Exception) {

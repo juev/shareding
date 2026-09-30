@@ -24,6 +24,15 @@ class SyncScheduler(context: Context) {
     private val workManager = WorkManager.getInstance(context)
     private val scheduling = Mutex()
 
+    val workInfos = workManager.getWorkInfosForUniqueWorkFlow("linkding-sync")
+
+    suspend fun restartSync() = scheduling.withLock {
+        withContext(Dispatchers.IO) {
+            workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.REPLACE, newRequest())
+                .result.get()
+        }
+    }
+
     suspend fun ensureScheduled() = withContext(Dispatchers.IO) {
         workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.KEEP, newRequest())
             .result.get()

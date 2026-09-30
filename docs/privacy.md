@@ -1,6 +1,6 @@
 # ShareDing privacy policy
 
-Effective September 29, 2026.
+Effective September 30, 2026.
 
 ShareDing is an Android app that saves bookmarks on your device and sends them to the linkding server you configure. Questions about this policy can be sent to [denis@evsyukov.org](mailto:denis@evsyukov.org).
 
@@ -10,7 +10,7 @@ ShareDing stores queued bookmark URLs, titles, descriptions, notes, tags, unread
 
 When sync runs, ShareDing sends the bookmark fields and API token to your configured linkding server. The server URL must use HTTPS. Your linkding server's operator determines how data sent to that server is stored and used; consult that server's policy if you do not operate it yourself. ShareDing has no developer-operated service that receives your bookmarks or token.
 
-If a bookmark has no title, or you tap **Fetch page details**, ShareDing may request the bookmarked page to read its title, description, and keyword tags. That request does not include your linkding API token. Bookmarked pages may use HTTP or HTTPS. An HTTP page request and its response are unencrypted, and the page operator can receive your IP address and ordinary request information.
+If you tap **Fetch page details**, ShareDing may request the bookmarked page to read its title, description, and keyword tags. Background sync leaves page metadata retrieval to linkding and omits titles received through Share. Titles accepted in the Add Bookmark form are sent to linkding. Page-detail requests do not include your linkding API token. Bookmarked pages may use HTTP or HTTPS. An HTTP page request and its response are unencrypted, and the page operator can receive your IP address and ordinary request information.
 
 ## Optional proxy
 

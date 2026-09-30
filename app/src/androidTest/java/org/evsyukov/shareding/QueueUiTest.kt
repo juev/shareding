@@ -12,8 +12,17 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.WorkManager
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import org.evsyukov.shareding.sync.SyncWorker
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -40,7 +49,8 @@ class QueueUiTest {
 
     @Before fun startWithoutProxy() {
         val store = (compose.activity.application as ShareDingApplication).container.settings
-        store.save(store.state.value.serverUrl, null, store.state.value.defaultTags,
+        WorkManager.getInstance(compose.activity).cancelUniqueWork("linkding-sync").result.get()
+        store.save("", null, store.state.value.defaultTags,
             store.state.value.unread, store.state.value.archived, ProxyConfig())
     }
 
@@ -59,16 +69,88 @@ class QueueUiTest {
                 app.container.db.bookmarks().insert(Bookmark(url = url))
             }
         }
+        val manager = WorkManager.getInstance(compose.activity)
+        val waiting = OneTimeWorkRequestBuilder<SyncWorker>().setInitialDelay(1, TimeUnit.DAYS).build()
+        manager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.REPLACE, waiting).result.get()
         compose.onNodeWithContentDescription("Delete $url").performClick()
         compose.onNodeWithText("Delete bookmark?").assertIsDisplayed()
         compose.onNodeWithText("Cancel").performClick()
         runBlocking { assertNotNull(app.container.db.bookmarks().findByUrl(url)) }
+        assertEquals(WorkInfo.State.ENQUEUED, manager.getWorkInfoById(waiting.id).get()?.state)
         compose.onNodeWithContentDescription("Delete $url").performClick()
         compose.onNodeWithText("Delete").performClick()
         compose.waitUntil(5_000) {
             runBlocking { app.container.db.bookmarks().findByUrl(url) == null }
         }
         runBlocking { assertNull(app.container.db.bookmarks().findByUrl(url)) }
+        compose.waitUntil(5_000) {
+            val old = manager.getWorkInfoById(waiting.id).get()
+            old == null || old.state == WorkInfo.State.CANCELLED
+        }
+        assertTrue(manager.getWorkInfosForUniqueWork("linkding-sync").get().any { it.id != waiting.id })
+    }
+
+    @Test fun cardExpandsFullSelectableTitleUrlAndErrorThenCollapses() {
+        val app = compose.activity.application as ShareDingApplication
+        val title = "Detailed bookmark title ".repeat(8)
+        val url = "https://example.com/" + "long-path-segment/".repeat(14)
+        val error = "linkding returned HTTP 400\n" + "The title exceeds the server limit. ".repeat(8)
+        runBlocking {
+            withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+            app.container.db.bookmarks().insert(Bookmark(url = url, title = title,
+                status = "failed", lastError = error))
+        }
+        fun exceeded(text: String): Boolean {
+            val layouts = mutableListOf<TextLayoutResult>()
+            compose.onNodeWithText(text, useUnmergedTree = true)
+                .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            return layouts.single().multiParagraph.didExceedMaxLines
+        }
+        assertTrue(exceeded(title))
+        assertTrue(exceeded(url))
+        assertTrue(exceeded(error))
+        compose.onNodeWithText(title).performClick()
+        compose.waitForIdle()
+        assertEquals(false, exceeded(title))
+        assertEquals(false, exceeded(url))
+        assertEquals(false, exceeded(error))
+        val titleBounds = compose.onNodeWithText(title, useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val urlBounds = compose.onNodeWithText(url, useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue("Expanded title and URL must not overlap", titleBounds.bottom <= urlBounds.top)
+        compose.onNodeWithContentDescription("Hide details for $url").performClick()
+        assertTrue(exceeded(title))
+    }
+
+    @Test fun queueSyncReplacesDelayedWorkAndShowsLastAttemptWithEmptyQueue() {
+        val tls = AndroidTestTls(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context)
+        MockWebServer().apply { tls.start(this) }.use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = MockResponse().setResponseCode(
+                    if (request.method == "POST") 201 else 200).setBody("{}")
+            }
+            val app = compose.activity.application as ShareDingApplication
+            runBlocking {
+                withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+                app.container.db.bookmarks().insert(Bookmark(url = "https://example.com/manual-sync"))
+            }
+            app.container.settings.save(tls.url(server), "secret", "", true, false)
+            val manager = WorkManager.getInstance(compose.activity)
+            val waiting = OneTimeWorkRequestBuilder<SyncWorker>().setInitialDelay(1, TimeUnit.DAYS).build()
+            manager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.REPLACE, waiting).result.get()
+            compose.onNodeWithContentDescription("Sync now").performClick()
+            compose.waitUntil(10_000) { runBlocking { app.container.db.bookmarks().count() == 0 } }
+            val old = manager.getWorkInfoById(waiting.id).get()
+            assertTrue(old == null || old.state == WorkInfo.State.CANCELLED)
+            compose.waitUntil(5_000) { app.container.settings.state.value.lastError.isBlank() &&
+                app.container.settings.state.value.lastSyncAttempt > 0 }
+            compose.onNodeWithText("Last sync: Successful", substring = true).assertIsDisplayed()
+            compose.onNodeWithText("Queue is empty").assertIsDisplayed()
+            assertEquals(2, server.requestCount)
+            compose.onNodeWithText("Settings").performClick()
+            compose.onNodeWithText("Sync Now").assertDoesNotExist()
+        }
     }
 
     @Test fun httpServerShowsHttpsRequirement() {
@@ -115,12 +197,16 @@ class QueueUiTest {
         runBlocking { withContext(Dispatchers.IO) { app.container.db.clearAllTables() } }
         compose.onNodeWithText("Add bookmark").performClick()
         compose.onNodeWithText("URL").performTextInput(url)
+        compose.onNodeWithText("Title").performTextInput("Manual ")
+        compose.onNodeWithText("Title").performTextInput("title")
         compose.onNodeWithText("Tags").performTextInput("local, work notes")
         compose.onNodeWithText("Save bookmark").performClick()
         compose.waitUntil(5_000) {
             runBlocking { app.container.db.bookmarks().findByUrl(url) != null }
         }
         assertEquals("local, work notes", runBlocking { app.container.db.bookmarks().findByUrl(url)?.tags })
+        assertEquals("Manual title", runBlocking { app.container.db.bookmarks().findByUrl(url)?.title })
+        assertEquals(true, runBlocking { app.container.db.bookmarks().findByUrl(url)?.sendTitle })
     }
 
     @Test fun fetchPageDetailsThroughSavedProxyFillsAvailableFields() {

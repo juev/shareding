@@ -52,6 +52,70 @@ class SyncSchedulerTest {
         }
     }
 
+    @Test fun restartReplacesDelayedWorkWithAnImmediateRequest() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workManager = WorkManager.getInstance(context)
+        workManager.cancelUniqueWork("linkding-sync").result.get()
+        try {
+            val existing = OneTimeWorkRequestBuilder<SyncWorker>()
+                .setInitialDelay(1, TimeUnit.DAYS).build()
+            workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.KEEP,
+                existing).result.get()
+
+            val scheduler = SyncScheduler(context)
+            scheduler.restartSync()
+
+            val infos = workManager.getWorkInfosForUniqueWork("linkding-sync").get()
+            val oldWork = workManager.getWorkInfoById(existing.id).get()
+            assertTrue(oldWork == null || oldWork.state == WorkInfo.State.CANCELLED)
+            assertEquals(1, infos.count { it.id != existing.id })
+            assertEquals(0L, scheduler.newRequest().workSpec.initialDelay)
+        } finally {
+            workManager.cancelUniqueWork("linkding-sync").result.get()
+        }
+    }
+
+    @Test fun restartCancelsRunningWorkAndLeavesOneReplacement() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workManager = WorkManager.getInstance(context)
+        workManager.cancelUniqueWork("linkding-sync").result.get()
+        BlockingTestWorker.reset()
+        try {
+            val existing = OneTimeWorkRequestBuilder<BlockingTestWorker>().build()
+            workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.KEEP,
+                existing).result.get()
+            assertTrue(BlockingTestWorker.started.await(10, TimeUnit.SECONDS))
+
+            SyncScheduler(context).restartSync()
+
+            val oldWork = workManager.getWorkInfoById(existing.id).get()
+            assertTrue(oldWork == null || oldWork.state == WorkInfo.State.CANCELLED)
+            val infos = workManager.getWorkInfosForUniqueWork("linkding-sync").get()
+            assertEquals(1, infos.count { it.id != existing.id })
+            assertEquals(1, infos.count { it.state != WorkInfo.State.CANCELLED })
+        } finally {
+            BlockingTestWorker.release.countDown()
+            workManager.cancelUniqueWork("linkding-sync").result.get()
+        }
+    }
+
+    @Test fun restartCreatesWorkWhenNoCurrentSyncExists() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workManager = WorkManager.getInstance(context)
+        workManager.cancelUniqueWork("linkding-sync").result.get()
+        try {
+            val before = workManager.getWorkInfosForUniqueWork("linkding-sync").get()
+                .map { it.id }.toSet()
+
+            SyncScheduler(context).restartSync()
+
+            val after = workManager.getWorkInfosForUniqueWork("linkding-sync").get()
+            assertEquals(1, after.count { it.id !in before })
+        } finally {
+            workManager.cancelUniqueWork("linkding-sync").result.get()
+        }
+    }
+
     @Test fun appStartupKeepsExistingPendingWork() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workManager = WorkManager.getInstance(context)
