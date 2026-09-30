@@ -180,6 +180,15 @@ class QueueUiTest {
         }
     }
 
+    @Test fun addFormAsksBeforeDiscardingTypedLink() {
+        compose.onNodeWithText("Add bookmark").performClick()
+        compose.onNodeWithText("URL").performTextInput("https://example.com/typed")
+        compose.onNodeWithContentDescription("Back to queue").performClick()
+        compose.onNodeWithText("Discard bookmark?").assertIsDisplayed()
+        compose.onNodeWithText("Discard").performClick()
+        compose.onNodeWithText("Add Bookmark").assertDoesNotExist()
+    }
+
     @Test fun pasteButtonFillsUrlFromClipboard() {
         setClipboard("see https://example.com/pasted?utm_source=x&id=7 thanks")
         compose.onNodeWithText("Add bookmark").performClick()
