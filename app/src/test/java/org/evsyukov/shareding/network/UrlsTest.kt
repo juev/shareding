@@ -17,6 +17,28 @@ class UrlsTest {
         assertEquals("https://youtu.be/abc", Urls.bookmark(" https://youtu.be/abc?si=xyz "))
     }
 
+    @Test fun bookmarkUrlsFitLinkdingColumn() {
+        val base = "https://example.com/"
+        val longest = base + "a".repeat(Urls.MAX_LENGTH - base.length)
+        assertEquals(longest, Urls.bookmark(longest))
+        try {
+            Urls.bookmark(longest + "a")
+            fail("URLs over 2048 characters must be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("URL is longer than 2048 characters", error.message)
+        }
+    }
+
+    @Test fun tagsOver64CharactersAreRejected() {
+        TagNames.requireValid("ok, " + "😀".repeat(TagNames.MAX_LENGTH))
+        try {
+            TagNames.requireValid("ok, " + "a".repeat(TagNames.MAX_LENGTH + 1))
+            fail("Tags over 64 characters must be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("Tag is longer than 64 characters: ${"a".repeat(24)}…", error.message)
+        }
+    }
+
     @Test fun serverRequiresHttpsButBookmarksMayUseHttp() {
         assertEquals("https://example.com/linkding/", Urls.server("https://example.com/linkding").toString())
         assertEquals("http://example.com/article", Urls.parse("http://example.com/article").toString())

@@ -16,4 +16,18 @@ class BookmarkTitlesTest {
     @Test fun blankTitleNormalizesToEmptyString() {
         assertEquals("", BookmarkTitles.normalize(" \n\t "))
     }
+
+    @Test fun sharedTitleThatIsJustTheLinkIsDropped() {
+        val url = "https://example.com/article"
+        assertEquals("", BookmarkTitles.shared("https://example.com/article", url))
+        assertEquals("", BookmarkTitles.shared(" HTTP://other.example/page\n", url))
+        assertEquals("", BookmarkTitles.shared("www.example.com/article/", url))
+        assertEquals("", BookmarkTitles.shared("example.com/article", url))
+    }
+
+    @Test fun sharedTitleWithTextIsKeptSingleLine() {
+        assertEquals("Read this: https://example.com",
+            BookmarkTitles.shared("Read this:\nhttps://example.com", "https://example.com"))
+        assertEquals("Article title", BookmarkTitles.shared(" Article\ttitle ", "https://example.com/a"))
+    }
 }

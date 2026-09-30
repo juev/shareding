@@ -13,6 +13,7 @@ data class BookmarkDraft(
     constructor(bookmark: Bookmark) : this(bookmark.url, bookmark.title, bookmark.description, bookmark.tags)
 
     fun applyTo(original: Bookmark): Bookmark {
+        TagNames.requireValid(tags)
         val changedTitle = title != original.title
         val normalizedTitle = if (changedTitle) BookmarkTitles.normalize(title) else original.title
         return original.copy(url = Urls.bookmark(url), title = normalizedTitle,

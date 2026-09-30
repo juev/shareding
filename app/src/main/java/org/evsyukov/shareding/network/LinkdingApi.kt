@@ -36,8 +36,15 @@ object Urls {
             uri.path.trimEnd('/') + "/", null, null)
     }
 
+    /** linkding stores bookmark URLs in a 2048-character column. */
+    const val MAX_LENGTH = 2048
+
     /** Validates a bookmark URL and removes known tracking parameters. */
-    fun bookmark(value: String): String = TrackingParams.strip(parse(value).toString())
+    fun bookmark(value: String): String {
+        val url = TrackingParams.strip(parse(value).toString())
+        require(url.codePointCount(0, url.length) <= MAX_LENGTH) { "URL is longer than $MAX_LENGTH characters" }
+        return url
+    }
 
     fun sharedText(text: String): String? {
         val candidate = Regex("https?://[^\\s<>\"']+", RegexOption.IGNORE_CASE)
@@ -47,6 +54,17 @@ object Urls {
 }
 
 object TagNames {
+    /** linkding stores tag names in a 64-character column; the API does not check the length. */
+    const val MAX_LENGTH = 64
+
+    fun fits(name: String): Boolean = name.codePointCount(0, name.length) <= MAX_LENGTH
+
+    fun requireValid(value: String) {
+        parse(value).firstOrNull { !fits(it) }?.let { name ->
+            throw IllegalArgumentException("Tag is longer than $MAX_LENGTH characters: ${name.take(24)}…")
+        }
+    }
+
     fun parse(value: String): List<String> = value.split(',').map { it.trim() }
         .filter { it.isNotEmpty() }.distinct()
 

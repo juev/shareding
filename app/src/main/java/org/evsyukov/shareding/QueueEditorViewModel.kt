@@ -80,7 +80,7 @@ class QueueEditorViewModel(application: Application) : AndroidViewModel(applicat
         val draft = current.draft ?: return
         val session = owner ?: return
         try {
-            Urls.parse(draft.url)
+            Urls.bookmark(draft.url)
         } catch (error: Exception) {
             mutableState.value = current.copy(urlError = error.message ?: "Invalid URL")
             return

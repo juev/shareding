@@ -46,6 +46,7 @@ class ShortLinkResolverTest {
             MockResponse().setResponseCode(301),
             redirect("ftp://example.com/file"),
             redirect("http://[bad"),
+            redirect("https://example.com/" + "a".repeat(Urls.MAX_LENGTH)),
             MockResponse().setResponseCode(404),
             MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START),
             MockResponse().setHeadersDelay(7, TimeUnit.SECONDS),
