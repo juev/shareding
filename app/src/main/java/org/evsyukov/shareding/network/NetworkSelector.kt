@@ -5,19 +5,17 @@ import kotlinx.coroutines.CancellationException
 
 class NetworkSelector(private val networks: NetworkTracker, private val api: LinkdingApi,
                       private val pageFetcher: PageMetadataFetcher) {
-    suspend fun checkAndSelect(server: String, token: String, preferred: Network? = null,
-                               proxy: ProxyConfig? = null): Network? =
+    suspend fun checkAndSelect(server: String, token: String, preferred: Network? = null): Network? =
         select(preferred) { network ->
-            api.check(server, token, network, proxy)
+            api.check(server, token, network)
             network
         }
 
     suspend fun listTags(server: String, token: String): List<String> =
         select(null) { network -> api.listTags(server, token, network) }
 
-    suspend fun fetchPageMetadata(url: String, preferred: Network? = null,
-                                  proxy: ProxyConfig? = null): PageMetadata? =
-        select(preferred) { network -> pageFetcher.fetch(url, network, proxy) }
+    suspend fun fetchPageMetadata(url: String, preferred: Network? = null): PageMetadata? =
+        select(preferred) { network -> pageFetcher.fetch(url, network) }
 
     private suspend fun <T> select(preferred: Network?, action: suspend (Network?) -> T): T {
         var lastError: Exception? = null

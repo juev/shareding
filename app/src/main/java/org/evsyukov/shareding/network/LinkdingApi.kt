@@ -4,7 +4,6 @@ import android.net.Network
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import java.io.IOException
 import java.net.URI
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -66,22 +65,19 @@ object TagNames {
 class ApiException(val code: Int, message: String) : Exception(message)
 
 class LinkdingApi(
-    private val clientFactory: (ProxyConfig, Network?, Long, Long) -> OkHttpClient = ProxyHttpClient::create,
-    private val proxyProvider: () -> ProxyConfig = { ProxyConfig() },
+    private val clientFactory: (Network?, Long, Long) -> OkHttpClient = HttpClients::create,
 ) {
-    suspend fun check(server: String, token: String, network: Network? = null,
-                      proxy: ProxyConfig? = null) = withContext(Dispatchers.IO) {
-        request(endpoint(server, "api/tags/"), token, "GET", null, network, proxy)
+    suspend fun check(server: String, token: String, network: Network? = null) = withContext(Dispatchers.IO) {
+        request(endpoint(server, "api/tags/"), token, "GET", null, network)
     }
 
-    suspend fun listTags(server: String, token: String, network: Network? = null,
-                         proxy: ProxyConfig? = null): List<String> =
+    suspend fun listTags(server: String, token: String, network: Network? = null): List<String> =
         withContext(Dispatchers.IO) {
             val tags = mutableListOf<String>()
             var offset = 0
             while (true) {
                 val response = request(endpoint(server, "api/tags/?limit=100&offset=$offset"),
-                    token, "GET", null, network, proxy, readBody = true)
+                    token, "GET", null, network, readBody = true)
                     ?: error("Empty tag response")
                 val page = JsonParser.parseString(response).asJsonObject
                 val results = page.getAsJsonArray("results")
@@ -97,8 +93,7 @@ class LinkdingApi(
             tags.distinct().sortedBy { it.lowercase() }
         }
 
-    suspend fun send(server: String, token: String, bookmark: Bookmark, network: Network? = null,
-                     proxy: ProxyConfig? = null) =
+    suspend fun send(server: String, token: String, bookmark: Bookmark, network: Network? = null) =
         withContext(Dispatchers.IO) {
             val json = JsonObject().apply {
                 addProperty("url", bookmark.url)
@@ -114,36 +109,26 @@ class LinkdingApi(
                 addProperty("unread", bookmark.unread)
                 addProperty("is_archived", bookmark.archived)
             }
-            request(endpoint(server, "api/bookmarks/"), token, "POST", json.toString(), network, proxy)
+            request(endpoint(server, "api/bookmarks/"), token, "POST", json.toString(), network)
         }
 
     private fun endpoint(server: String, path: String): URL = Urls.server(server).resolve(path).toURL()
 
     private suspend fun request(url: URL, token: String, method: String, body: String?, network: Network?,
-                        proxy: ProxyConfig?,
                         readBody: Boolean = false): String? {
-        val config = proxy ?: proxyProvider()
         val request = Request.Builder().url(url)
             .header("Authorization", "Token $token")
             .header("Accept", "application/json")
             .method(method, body?.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
-        return try {
-            clientFactory(config, network, 10, 15).newCall(request).executeCancellable { response ->
-                val code = response.code
-                if (code !in 200..299) {
-                    val reason = if (code == 407 && config.enabled) "Proxy authentication failed (HTTP 407)"
-                        else "linkding returned HTTP $code"
-                    val detail = response.body?.string().orEmpty().trim()
-                    throw ApiException(code, if (detail.isEmpty()) reason else "$reason\n$detail")
-                }
-                if (readBody) response.body?.string() else null
+        return clientFactory(network, 10, 15).newCall(request).executeCancellable { response ->
+            val code = response.code
+            if (code !in 200..299) {
+                val reason = "linkding returned HTTP $code"
+                val detail = response.body?.string().orEmpty().trim()
+                throw ApiException(code, if (detail.isEmpty()) reason else "$reason\n$detail")
             }
-        } catch (error: IOException) {
-            if (config.enabled && error.message == "Failed to authenticate with proxy") {
-                throw ApiException(407, "Proxy authentication failed (HTTP 407)")
-            }
-            throw error
+            if (readBody) response.body?.string() else null
         }
     }
 }

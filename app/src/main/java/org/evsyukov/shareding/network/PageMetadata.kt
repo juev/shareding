@@ -36,11 +36,10 @@ object PageMetadataParser {
         }?.attr("content")
 }
 
-class PageMetadataFetcher(private val proxyProvider: () -> ProxyConfig = { ProxyConfig() }) {
-    suspend fun fetch(url: String, network: Network? = null,
-                      proxy: ProxyConfig? = null): PageMetadata? = withContext(Dispatchers.IO) {
+class PageMetadataFetcher {
+    suspend fun fetch(url: String, network: Network? = null): PageMetadata? = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(Urls.parse(url).toURL()).build()
-        ProxyHttpClient.create(proxy ?: proxyProvider(), network, 5, 5)
+        HttpClients.create(network, 5, 5)
             .newCall(request).executeCancellable { response ->
             if (!response.isSuccessful) return@executeCancellable null
             val body = response.body ?: return@executeCancellable null

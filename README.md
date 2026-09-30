@@ -32,7 +32,7 @@ These screens were captured on an Android 16 emulator with an example link in th
 
 | Queue | Add Bookmark | Settings |
 | --- | --- | --- |
-| <a href="docs/images/queue.png"><img src="docs/images/queue.png" alt="Queue with sync status and an expandable pending bookmark" width="200"></a> | <a href="docs/images/add-bookmark.png"><img src="docs/images/add-bookmark.png" alt="Add Bookmark form with URL, title, description, tags, and Fetch page details" width="200"></a> | <a href="docs/images/settings.png"><img src="docs/images/settings.png" alt="Settings with a proxy switch and bookmark defaults" width="200"></a> |
+| <a href="docs/images/queue.png"><img src="docs/images/queue.png" alt="Queue with sync status and an expandable pending bookmark" width="200"></a> | <a href="docs/images/add-bookmark.png"><img src="docs/images/add-bookmark.png" alt="Add Bookmark form with URL, title, description, tags, and Fetch page details" width="200"></a> | <a href="docs/images/settings.png"><img src="docs/images/settings.png" alt="Settings with linkding connection and bookmark defaults" width="200"></a> |
 
 [Expanded bookmark details](docs/images/queue-expanded.png) show the full title and URL, with an action to open the [queue editor](docs/images/edit-bookmark.png).
 
@@ -46,9 +46,9 @@ These screens were captured on an Android 16 emulator with an example link in th
 
 Settings also lets you set default tags and choose whether new bookmarks are marked unread or archived. Enter multiple tags with commas, for example `reading, work notes`, then tap **Save settings**. With a configured connection, existing linkding tags appear as suggestions while you type in Settings or a bookmark form. You can still enter new tags and save while the server is offline.
 
-To route app requests through an HTTP proxy, turn on **Use proxy** in Settings and enter its host and port. Username and password are optional. **Test Connection** uses the proxy settings currently shown in the form, so you can check them before saving. When enabled, the proxy handles linkding requests and page-detail fetches. If it is unavailable, ShareDing does not fall back to a direct request. Proxy passwords are encrypted with Android Keystore; HTTP proxy authentication sends credentials to the proxy without TLS, so use a trusted network.
+ShareDing connects to linkding and bookmarked pages directly. It has no proxy setting; if your server is reachable only through another route, use a VPN on your device. Versions before 0.2.1 had an optional HTTP proxy. It was removed because proxy credentials were sent without TLS, and updating deletes any saved proxy settings.
 
-Settings shows an inline Test Connection result. The API token is encrypted using a key held in Android Keystore. The [privacy policy](docs/privacy.md) explains how the app handles bookmarks, the token, and proxy settings.
+Settings shows an inline Test Connection result. The API token is encrypted using a key held in Android Keystore. The [privacy policy](docs/privacy.md) explains how the app handles bookmarks and the token.
 
 ShareDing is written in Kotlin. Jetpack Compose provides the interface, Room stores the queue, and WorkManager handles background sync.
 

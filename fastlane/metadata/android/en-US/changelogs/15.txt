@@ -1,0 +1,1 @@
+Remove the HTTP proxy setting: proxy credentials were sent without TLS. Use a VPN on your device to reach a server through another route. Updating deletes any saved proxy host, port, username, and password.

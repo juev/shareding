@@ -17,7 +17,6 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import okhttp3.mockwebserver.SocketPolicy
 import org.evsyukov.shareding.data.Bookmark
-import org.evsyukov.shareding.network.ProxyConfig
 import org.evsyukov.shareding.sync.SyncWorker
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -37,7 +36,7 @@ class QueueSyncInteractionTest {
         val dao = app.container.db.bookmarks()
         MockWebServer().apply { tls.start(this) }.use { server ->
             try {
-                app.container.settings.save(tls.url(server), "secret", "", true, false, ProxyConfig())
+                app.container.settings.save(tls.url(server), "secret", "", true, false)
                 dao.insert(Bookmark(url = "https://example.com/first", createdAt = 1))
                 val deleted = dao.insert(Bookmark(url = "https://example.com/deleted", createdAt = 2))
                 server.dispatcher = object : Dispatcher() {
@@ -54,7 +53,7 @@ class QueueSyncInteractionTest {
                 val body = JsonParser.parseString(server.takeRequest().body.readUtf8()).asJsonObject
                 assertEquals("https://example.com/first", body.get("url").asString)
             } finally {
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
             }
         }
     }
@@ -70,7 +69,7 @@ class QueueSyncInteractionTest {
         val posted = Collections.synchronizedList(mutableListOf<String>())
         MockWebServer().apply { tls.start(this) }.use { server ->
             try {
-                app.container.settings.save(tls.url(server), "secret", "", true, false, ProxyConfig())
+                app.container.settings.save(tls.url(server), "secret", "", true, false)
                 val deleted = dao.insert(Bookmark(url = "https://example.com/stuck", createdAt = 1))
                 dao.insert(Bookmark(url = "https://example.com/remaining", createdAt = 2))
                 server.dispatcher = object : Dispatcher() {
@@ -95,7 +94,7 @@ class QueueSyncInteractionTest {
                 assertTrue(manager.getWorkInfosForUniqueWork("linkding-sync").get().any { it.id != running.id })
             } finally {
                 manager.cancelUniqueWork("linkding-sync").result.get()
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
                 withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
             }
         }

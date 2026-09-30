@@ -6,17 +6,15 @@ ShareDing is an Android app that saves bookmarks on your device and sends them t
 
 ## Data handled by the app
 
-ShareDing stores queued bookmark URLs, titles, descriptions, notes, tags, unread and archive choices, and delivery status on your device. It also stores your linkding server URL, default settings, the most recent sync time and error, and any proxy host, port, and username you enter. The linkding API token and optional proxy password are encrypted on the device using a key held by Android Keystore.
+ShareDing stores queued bookmark URLs, titles, descriptions, notes, tags, unread and archive choices, and delivery status on your device. It also stores your linkding server URL, default settings, and the most recent sync time and error. The linkding API token is encrypted on the device using a key held by Android Keystore.
 
 When sync runs, ShareDing sends the bookmark fields and API token to your configured linkding server. The server URL must use HTTPS. Your linkding server's operator determines how data sent to that server is stored and used; consult that server's policy if you do not operate it yourself. ShareDing has no developer-operated service that receives your bookmarks or token.
 
 If you tap **Fetch page details**, ShareDing may request the bookmarked page to read its title, description, and keyword tags. Background sync leaves page metadata retrieval to linkding and omits titles received through Share. Titles accepted in the Add Bookmark form are sent to linkding. Page-detail requests do not include your linkding API token. Bookmarked pages may use HTTP or HTTPS. An HTTP page request and its response are unencrypted, and the page operator can receive your IP address and ordinary request information.
 
-## Optional proxy
+## Network routes
 
-If you enable a proxy, ShareDing sends linkding requests and page-detail requests through the HTTP proxy you configure. The proxy can see the destination and connection metadata. An HTTPS linkding connection uses TLS through the proxy, so the proxy does not receive the linkding API token or bookmark content from that connection. HTTP page requests and their responses are visible to the proxy.
-
-If you configure a proxy username and password, HTTP Basic authentication sends those credentials to the proxy without TLS, including when the linkding connection itself uses HTTPS. Use a proxy and network you trust. ShareDing does not fall back to a direct connection when the configured proxy fails.
+ShareDing connects directly to your linkding server and to bookmarked pages. It has no proxy setting and ignores a system HTTP proxy. If you use a VPN on your device, Android sends ShareDing's connections through it like other app traffic. Versions before 0.2.1 offered an optional HTTP proxy; updating to a version without it deletes any saved proxy host, port, username, and password from the device.
 
 ## Retention and control
 

@@ -4,7 +4,7 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.tls.HandshakeCertificates
 import okhttp3.tls.HeldCertificate
 
-internal class TlsMockServer(tunnelProxy: Boolean = false) : AutoCloseable {
+internal class TlsMockServer : AutoCloseable {
     private val certificate = HeldCertificate.Builder()
         .commonName("localhost")
         .addSubjectAlternativeName("localhost")
@@ -20,17 +20,16 @@ internal class TlsMockServer(tunnelProxy: Boolean = false) : AutoCloseable {
         .build()
 
     val server = MockWebServer().apply {
-        useHttps(serverCertificates.sslSocketFactory(), tunnelProxy)
+        useHttps(serverCertificates.sslSocketFactory(), false)
     }
 
-    fun api(proxyProvider: () -> ProxyConfig = { ProxyConfig() }): LinkdingApi = LinkdingApi(
-        clientFactory = { config, network, connectSeconds, readSeconds ->
-            ProxyHttpClient.create(config, network, connectSeconds, readSeconds)
+    fun api(): LinkdingApi = LinkdingApi(
+        clientFactory = { network, connectSeconds, readSeconds ->
+            HttpClients.create(network, connectSeconds, readSeconds)
                 .newBuilder()
                 .sslSocketFactory(clientCertificates.sslSocketFactory(), clientCertificates.trustManager)
                 .build()
         },
-        proxyProvider = proxyProvider,
     )
 
     override fun close() = server.close()

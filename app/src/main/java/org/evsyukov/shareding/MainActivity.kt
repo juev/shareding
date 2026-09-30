@@ -252,21 +252,16 @@ private fun ShareDingScreen(container: AppContainer, editor: QueueEditorViewMode
             onDelete = { deleteTarget = it }, onEdit = { editor.open(it.id) })
         }
         else SettingsScreen(settings, padding, serverTags, tagLoadError,
-            onSave = { server, token, tags, unread, archived, proxyEnabled, proxyHost, proxyPort,
-                       proxyUsername, proxyPassword ->
+            onSave = { server, token, tags, unread, archived ->
                 if (server.isNotBlank()) Urls.server(server)
                 withContext(Dispatchers.IO) {
-                    val proxy = container.settings.resolveProxy(proxyEnabled, proxyHost, proxyPort,
-                        proxyUsername, proxyPassword)
-                    container.settings.save(server.trim(), token, tags.trim(), unread, archived, proxy)
+                    container.settings.save(server.trim(), token, tags.trim(), unread, archived)
                 }
                 container.scheduler.restartSync()
             },
-            onTest = { server, token, proxyEnabled, proxyHost, proxyPort, proxyUsername, proxyPassword ->
+            onTest = { server, token ->
                 val actualToken = token.ifBlank { container.settings.token().orEmpty() }
-                val proxy = container.settings.resolveProxy(proxyEnabled, proxyHost, proxyPort,
-                    proxyUsername, proxyPassword)
-                container.networkSelector.checkAndSelect(server, actualToken, proxy = proxy)
+                container.networkSelector.checkAndSelect(server, actualToken)
             },
             onRefreshTags = { tagRefresh++ })
     }
@@ -572,9 +567,8 @@ internal fun TagInput(value: String, onValueChange: (String) -> Unit, label: Str
 @Composable
 private fun SettingsScreen(settings: Settings, padding: PaddingValues,
                            availableTags: List<String>, tagLoadError: Boolean,
-                           onSave: suspend (String, String?, String, Boolean, Boolean,
-                               Boolean, String, String, String, String) -> Unit,
-                           onTest: suspend (String, String, Boolean, String, String, String, String) -> Unit,
+                           onSave: suspend (String, String?, String, Boolean, Boolean) -> Unit,
+                           onTest: suspend (String, String) -> Unit,
                            onRefreshTags: () -> Unit) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -587,11 +581,6 @@ private fun SettingsScreen(settings: Settings, padding: PaddingValues,
     var tags by rememberSaveable(settings.defaultTags) { mutableStateOf(settings.defaultTags) }
     var unread by rememberSaveable(settings.unread) { mutableStateOf(settings.unread) }
     var archived by rememberSaveable(settings.archived) { mutableStateOf(settings.archived) }
-    var proxyEnabled by rememberSaveable(settings.proxyEnabled) { mutableStateOf(settings.proxyEnabled) }
-    var proxyHost by rememberSaveable(settings.proxyHost) { mutableStateOf(settings.proxyHost) }
-    var proxyPort by rememberSaveable(settings.proxyPort) { mutableStateOf(settings.proxyPort.toString()) }
-    var proxyUsername by rememberSaveable(settings.proxyUsername) { mutableStateOf(settings.proxyUsername) }
-    var proxyPassword by rememberSaveable { mutableStateOf("") }
     var testStatus by rememberSaveable { mutableStateOf<String?>(null) }
     var testFailed by rememberSaveable { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
@@ -599,16 +588,7 @@ private fun SettingsScreen(settings: Settings, padding: PaddingValues,
     var saving by remember { mutableStateOf(false) }
     var saveStatus by rememberSaveable { mutableStateOf<String?>(null) }
     var saveFailed by rememberSaveable { mutableStateOf(false) }
-    val savedConnectionIsCurrent = server.trim() == settings.serverUrl && token.isBlank() &&
-        proxyEnabled == settings.proxyEnabled && proxyHost.trim() == settings.proxyHost &&
-        proxyPort == settings.proxyPort.toString() && proxyUsername.trim() == settings.proxyUsername &&
-        proxyPassword.isBlank()
-    val proxyChanged: () -> Unit = {
-        saveStatus = null
-        testVersion++
-        testStatus = null
-        testing = false
-    }
+    val savedConnectionIsCurrent = server.trim() == settings.serverUrl && token.isBlank()
     Column(Modifier.fillMaxSize().padding(padding)) {
     LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -636,44 +616,6 @@ private fun SettingsScreen(settings: Settings, padding: PaddingValues,
                 }, modifier = Modifier.fillMaxWidth(),
                     label = { Text(if (settings.hasToken) "API token (leave empty to keep current)" else "API token") },
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
-                Row(Modifier.fillMaxWidth().clickable {
-                    proxyEnabled = !proxyEnabled
-                    proxyChanged()
-                }, verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Use proxy")
-                    Switch(proxyEnabled, { proxyEnabled = it; proxyChanged() })
-                }
-                if (proxyEnabled) {
-                    Text("HTTP proxy for linkding and page details",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedTextField(proxyHost, { proxyHost = it; proxyChanged() },
-                        modifier = Modifier.fillMaxWidth(), label = { Text("Proxy host") },
-                        placeholder = { Text("proxy.example") }, singleLine = true)
-                    OutlinedTextField(proxyPort, { proxyPort = it; proxyChanged() },
-                        modifier = Modifier.fillMaxWidth(), label = { Text("Proxy port") },
-                        singleLine = true,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
-                    OutlinedTextField(proxyUsername, { proxyUsername = it; proxyChanged() },
-                        modifier = Modifier.fillMaxWidth(), label = { Text("Proxy username (optional)") },
-                        singleLine = true)
-                    OutlinedTextField(proxyPassword, { proxyPassword = it; proxyChanged() },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(if (settings.hasProxyPassword &&
-                            proxyUsername.trim() == settings.proxyUsername)
-                            "Proxy password (leave empty to keep current)" else "Proxy password (optional)") },
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        singleLine = true)
-                    Text("Clear the username to remove proxy authentication.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (proxyUsername.isNotBlank()) Text(
-                        "HTTP proxy credentials are sent to the proxy without TLS. Use a trusted network.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error)
-                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = {
                         val version = ++testVersion
@@ -682,8 +624,7 @@ private fun SettingsScreen(settings: Settings, padding: PaddingValues,
                         testing = true
                         scope.launch {
                             val result = try {
-                                onTest(server, token, proxyEnabled, proxyHost, proxyPort,
-                                    proxyUsername, proxyPassword)
+                                onTest(server, token)
                                 Result.success(Unit)
                             } catch (cancel: CancellationException) {
                                 throw cancel
@@ -778,10 +719,8 @@ private fun SettingsScreen(settings: Settings, padding: PaddingValues,
                     if (saving) return@launch
                     saving = true
                     try {
-                        onSave(server, token.takeIf { it.isNotBlank() }, tags, unread, archived,
-                            proxyEnabled, proxyHost, proxyPort, proxyUsername, proxyPassword)
+                        onSave(server, token.takeIf { it.isNotBlank() }, tags, unread, archived)
                         token = ""
-                        proxyPassword = ""
                         focusManager.clearFocus()
                         keyboard?.hide()
                         saveFailed = false

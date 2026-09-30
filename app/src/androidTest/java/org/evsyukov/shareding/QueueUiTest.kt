@@ -27,8 +27,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.Bookmark
-import org.evsyukov.shareding.data.SettingsStore
-import org.evsyukov.shareding.network.ProxyConfig
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -47,17 +45,17 @@ import org.junit.runner.RunWith
 class QueueUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
-    @Before fun startWithoutProxy() {
+    @Before fun startWithoutServer() {
         val store = (compose.activity.application as ShareDingApplication).container.settings
         WorkManager.getInstance(compose.activity).cancelUniqueWork("linkding-sync").result.get()
         store.save("", null, store.state.value.defaultTags,
-            store.state.value.unread, store.state.value.archived, ProxyConfig())
+            store.state.value.unread, store.state.value.archived)
     }
 
-    @After fun removeProxy() {
+    @After fun restoreSettings() {
         val store = (compose.activity.application as ShareDingApplication).container.settings
         store.save(store.state.value.serverUrl, null, store.state.value.defaultTags,
-            store.state.value.unread, store.state.value.archived, ProxyConfig())
+            store.state.value.unread, store.state.value.archived)
     }
 
     @Test fun deletingBookmarkRequiresConfirmation() {
@@ -209,15 +207,14 @@ class QueueUiTest {
         assertEquals(true, runBlocking { app.container.db.bookmarks().findByUrl(url)?.sendTitle })
     }
 
-    @Test fun fetchPageDetailsThroughSavedProxyFillsAvailableFields() {
-        MockWebServer().use { proxy ->
-            proxy.enqueue(MockResponse().addHeader("Content-Type", "text/html")
+    @Test fun fetchPageDetailsFillsAvailableFields() {
+        MockWebServer().use { page ->
+            page.enqueue(MockResponse().addHeader("Content-Type", "text/html")
                 .setBody("<title>Fetched title</title><meta name='description' content='Fetched summary'>" +
                     "<meta name='keywords' content='reading, research'>"))
             val app = compose.activity.application as ShareDingApplication
-            val url = "http://page.invalid/article"
-            app.container.settings.save("", null, "", true, false,
-                ProxyConfig(true, proxy.hostName, proxy.port))
+            val url = page.url("/article").toString()
+            app.container.settings.save("", null, "", true, false)
             runBlocking { withContext(Dispatchers.IO) { app.container.db.clearAllTables() } }
             compose.onNodeWithText("Add bookmark").performClick()
             compose.onNodeWithText("URL").performTextInput(url)
@@ -236,35 +233,15 @@ class QueueUiTest {
             assertEquals("Fetched title", saved?.title)
             assertEquals("Fetched summary", saved?.description)
             assertEquals("reading, research", saved?.tags)
-            assertEquals(1, proxy.requestCount)
+            assertEquals(1, page.requestCount)
         }
     }
 
-    @Test fun proxyFormValidatesAndSavesCredentials() {
-        val app = compose.activity.application as ShareDingApplication
-        app.container.settings.save("", null, "", true, false, ProxyConfig())
+    @Test fun settingsHaveNoProxyOptions() {
         compose.onNodeWithText("Settings").performClick()
-        compose.onNodeWithText("Use proxy").performClick()
-        compose.onNodeWithText("Proxy host").performTextInput("https://proxy.example")
-        compose.onNodeWithText("Proxy port").performTextClearance()
-        compose.onNodeWithText("Proxy port").performTextInput("8080")
-        compose.onNodeWithText("Save settings").performClick()
-        compose.onNodeWithText("Enter a proxy host without a scheme or path").assertIsDisplayed()
-        assertEquals(false, app.container.settings.state.value.proxyEnabled)
-        compose.onNodeWithText("Proxy host").performTextClearance()
-        compose.onNodeWithText("Proxy host").performTextInput("proxy.example")
-        compose.onNodeWithText("Proxy username (optional)").performTextInput("alice")
-        compose.onNodeWithText("Proxy password (optional)").performTextInput("secret")
-        compose.onNodeWithText("Save settings").performClick()
-        compose.waitUntil(5_000) { app.container.settings.state.value.proxyEnabled }
-        assertEquals("proxy.example", app.container.settings.state.value.proxyHost)
-        assertEquals(8080, app.container.settings.state.value.proxyPort)
-        assertTrue(app.container.settings.state.value.hasProxyPassword)
-        assertEquals(ProxyConfig(true, "proxy.example", 8080, "alice", "secret"),
-            SettingsStore(app).proxyConfig())
-        val stored = app.getSharedPreferences("secrets", android.content.Context.MODE_PRIVATE)
-            .getString("proxy_password", null)
-        assertTrue(stored != null && stored != "secret")
+        compose.onNodeWithText("Server URL").assertIsDisplayed()
+        assertTrue(compose.onAllNodes(hasText("proxy", substring = true, ignoreCase = true))
+            .fetchSemanticsNodes().isEmpty())
     }
 
     @Test fun connectionFailureRemainsVisibleInSettings() {
