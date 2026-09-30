@@ -157,6 +157,8 @@ class QueueEditingUiTest {
         compose.activityRule.scenario.recreate()
 
         compose.onNodeWithText("Edit bookmark").assertIsDisplayed()
+        // The restored focus reopens the keyboard, which resizes the editor.
+        compose.hideKeyboard(compose.activityRule.scenario)
         compose.onNodeWithText("Description").performScrollTo()
         compose.onNodeWithText(" draft survives rotation").assertIsDisplayed()
         assertTrue(app.container.scheduler.isPaused.value)

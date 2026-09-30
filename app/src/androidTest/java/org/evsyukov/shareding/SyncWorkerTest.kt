@@ -71,6 +71,26 @@ class SyncWorkerTest {
         }
     }
 
+    @Test fun emptyQueueRecordsUnreachableServerWithoutRetry() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val app = context.applicationContext as ShareDingApplication
+        val tls = AndroidTestTls(InstrumentationRegistry.getInstrumentation().context)
+        WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
+        withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+        MockWebServer().apply { tls.start(this) }.use { server ->
+            try {
+                app.container.settings.save(tls.url(server), "secret", "", true, false)
+                server.enqueue(MockResponse().setResponseCode(503).setBody("Down"))
+                val result = TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+                assertEquals(androidx.work.ListenableWorker.Result.success(), result)
+                assertEquals(true, app.container.settings.state.value.lastError.isNotBlank())
+            } finally {
+                app.container.settings.save("", null, "", true, false)
+                withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+            }
+        }
+    }
+
     @Test fun workerDrainsFiftyQueuedBookmarks() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val tls = AndroidTestTls(InstrumentationRegistry.getInstrumentation().context)
