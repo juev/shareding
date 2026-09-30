@@ -1,5 +1,6 @@
 package org.evsyukov.shareding
 
+import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
 import android.text.format.DateUtils
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -420,6 +422,14 @@ private fun QueueScreen(bookmarks: List<Bookmark>, padding: PaddingValues,
     }
 }
 
+/** Reads the clipboard only when called; returns its first HTTP(S) link. */
+private fun clipboardUrl(context: Context): String? {
+    val clip = context.getSystemService(ClipboardManager::class.java)?.primaryClip ?: return null
+    return (0 until clip.itemCount).firstNotNullOfOrNull { index ->
+        Urls.sharedText(clip.getItemAt(index).coerceToText(context).toString())
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddBookmarkScreen(container: AppContainer, availableTags: List<String>,
@@ -485,7 +495,18 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
             Text("Save a link now; ShareDing will send it when linkding is available.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(url, { url = it; metadataStatus = null }, modifier = Modifier.fillMaxWidth(),
-                label = { Text("URL") }, singleLine = true)
+                label = { Text("URL") }, singleLine = true,
+                trailingIcon = {
+                    IconButton(onClick = {
+                        val pasted = clipboardUrl(context)
+                        if (pasted == null) {
+                            Toast.makeText(context, "No link in clipboard", Toast.LENGTH_SHORT).show()
+                        } else {
+                            url = pasted
+                            metadataStatus = null
+                        }
+                    }) { Icon(Icons.Default.ContentPaste, contentDescription = "Paste link") }
+                })
             OutlinedTextField(title, { title = BookmarkTitles.limit(it.replace(Regex("[\r\n]+"), " ")) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Title") }, singleLine = true,
