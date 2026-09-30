@@ -57,10 +57,8 @@ object TagNames {
     /** linkding stores tag names in a 64-character column; the API does not check the length. */
     const val MAX_LENGTH = 64
 
-    fun fits(name: String): Boolean = name.codePointCount(0, name.length) <= MAX_LENGTH
-
     fun requireValid(value: String) {
-        parse(value).firstOrNull { !fits(it) }?.let { name ->
+        parse(value).firstOrNull { it.codePointCount(0, it.length) > MAX_LENGTH }?.let { name ->
             throw IllegalArgumentException("Tag is longer than $MAX_LENGTH characters: ${name.take(24)}…")
         }
     }

@@ -8,11 +8,11 @@ import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 
-data class PageMetadata(val title: String = "", val description: String = "", val tags: String = "") {
-    fun fillEmpty(title: String, description: String, tags: String): PageMetadata = PageMetadata(
+/** Page keywords are not read: they are noisy and tags stay the user's choice. */
+data class PageMetadata(val title: String = "", val description: String = "") {
+    fun fillEmpty(title: String, description: String): PageMetadata = PageMetadata(
         title = title.ifBlank { this.title },
         description = description.ifBlank { this.description },
-        tags = tags.ifBlank { this.tags },
     )
 }
 
@@ -25,9 +25,7 @@ object PageMetadataParser {
         val description = (meta(page, "name", "description")
             ?: meta(page, "property", "og:description")
             ?: meta(page, "name", "twitter:description")).orEmpty().trim().take(1000)
-        val keywords = meta(page, "name", "keywords").orEmpty()
-        val tags = TagNames.parse(keywords).filter(TagNames::fits).take(20).joinToString(", ")
-        return PageMetadata(title, description, tags)
+        return PageMetadata(title, description)
     }
 
     private fun meta(page: Document, attribute: String, name: String): String? =

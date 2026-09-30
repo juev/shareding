@@ -25,9 +25,17 @@ class BookmarkTitlesTest {
         assertEquals("", BookmarkTitles.shared("example.com/article", url))
     }
 
-    @Test fun sharedTitleWithTextIsKeptSingleLine() {
-        assertEquals("Read this: https://example.com",
+    @Test fun sharedShortenedLinkLabelIsDropped() {
+        val url = "https://alternativeto.net/news/2026/9/openshot-4-0-1-released/"
+        assertEquals("", BookmarkTitles.shared("alternativeto.net/news/2026/9...", url))
+        assertEquals("", BookmarkTitles.shared("alternativeto.net/news/2026/9…", url))
+        assertEquals("Release notes...", BookmarkTitles.shared("Release notes...", url))
+        assertEquals("other.net/news...", BookmarkTitles.shared("other.net/news...", url))
+    }
+
+    @Test fun sharedTitleWithTextIsKeptUnchanged() {
+        assertEquals("Read this:\nhttps://example.com",
             BookmarkTitles.shared("Read this:\nhttps://example.com", "https://example.com"))
-        assertEquals("Article title", BookmarkTitles.shared(" Article\ttitle ", "https://example.com/a"))
+        assertEquals(" Article\ttitle ", BookmarkTitles.shared(" Article\ttitle ", "https://example.com/a"))
     }
 }

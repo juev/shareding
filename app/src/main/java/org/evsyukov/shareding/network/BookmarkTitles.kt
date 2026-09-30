@@ -9,13 +9,20 @@ object BookmarkTitles {
     }
 
     /**
-     * Title an app passed along with a shared link, or empty when it is just a link.
-     * Browsers sharing a long-pressed link put the link itself into the subject.
+     * Title an app passed along with a shared link, unchanged, or empty when it is just a link.
+     * Browsers sharing a long-pressed link put the link, or its shortened label such as
+     * `example.com/news/2026/9...`, into the subject.
      */
     fun shared(title: String, url: String): String {
         val line = normalize(title)
         if (Regex("https?://\\S+", RegexOption.IGNORE_CASE).matches(line)) return ""
-        return if (withoutScheme(line) == withoutScheme(url)) "" else line
+        val label = withoutScheme(line)
+        val link = withoutScheme(url)
+        if (label == link) return ""
+        val shortened = label.removeSuffix("...").removeSuffix("…")
+        val isLabel = shortened != label && shortened.contains('.') && shortened.none(Char::isWhitespace) &&
+            link.startsWith(shortened)
+        return if (isLabel) "" else title
     }
 
     private fun withoutScheme(value: String): String =

@@ -630,12 +630,11 @@ internal fun AddBookmarkScreen(container: AppContainer, availableTags: List<Stri
                             if (url != requestedUrl) metadataStatus = "URL changed; fetch details again"
                             else if (found == null) metadataStatus = "No page details found"
                             else {
-                                val filled = found.fillEmpty(title, description, tags)
+                                val filled = found.fillEmpty(title, description)
                                 title = filled.title
                                 description = filled.description
-                                tags = filled.tags
-                                metadataStatus = if (found.title.isBlank() && found.description.isBlank() &&
-                                    found.tags.isBlank()) "No page details found" else "Page details loaded"
+                                metadataStatus = if (found.title.isBlank() && found.description.isBlank())
+                                    "No page details found" else "Page details loaded"
                             }
                         } catch (cancel: CancellationException) {
                             throw cancel
