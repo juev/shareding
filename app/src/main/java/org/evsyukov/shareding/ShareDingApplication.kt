@@ -2,6 +2,7 @@ package org.evsyukov.shareding
 
 import android.app.Application
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.room.Room
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -14,6 +15,7 @@ import org.evsyukov.shareding.network.LinkdingApi
 import org.evsyukov.shareding.network.NetworkSelector
 import org.evsyukov.shareding.network.NetworkTracker
 import org.evsyukov.shareding.network.PageMetadataFetcher
+import org.evsyukov.shareding.network.ShortLinkResolver
 import org.evsyukov.shareding.sync.SyncScheduler
 
 class ShareDingApplication : Application() {
@@ -49,6 +51,8 @@ class AppContainer(application: Application) {
     val settings = SettingsStore(application)
     val api = LinkdingApi()
     val pageFetcher = PageMetadataFetcher()
+    @VisibleForTesting
+    internal var shortLinks = ShortLinkResolver()
     val networkTracker = NetworkTracker(application)
     val networkSelector = NetworkSelector(networkTracker, api, pageFetcher)
     val scheduler = SyncScheduler(application)
