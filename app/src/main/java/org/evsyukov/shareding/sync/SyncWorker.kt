@@ -41,10 +41,8 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             return Result.success()
         } ?: return Result.success()
         if (dao.count() == 0) return Result.success()
-        val (proxy, selectedNetwork) = try {
-            val savedProxy = container.settings.proxyConfig()
-            savedProxy to container.networkSelector.checkAndSelect(settings.serverUrl, token,
-                network, savedProxy)
+        val selectedNetwork = try {
+            container.networkSelector.checkAndSelect(settings.serverUrl, token, network)
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (error: Exception) {
@@ -67,7 +65,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                 // A bookmark can have been removed since this batch was read.
                 if (dao.markSyncing(bookmark.id) == 0) continue
                 try {
-                    container.api.send(settings.serverUrl, token, bookmark, selectedNetwork, proxy)
+                    container.api.send(settings.serverUrl, token, bookmark, selectedNetwork)
                     dao.delete(bookmark.id)
                 } catch (cancel: CancellationException) {
                     throw cancel

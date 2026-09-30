@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -12,7 +13,6 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import org.evsyukov.shareding.network.ProxyConfig
 
 data class Settings(
     val serverUrl: String = "",
@@ -23,17 +23,17 @@ data class Settings(
     val lastSyncAttempt: Long = 0,
     val lastError: String = "",
     val hasToken: Boolean = false,
-    val proxyEnabled: Boolean = false,
-    val proxyHost: String = "",
-    val proxyPort: Int = 8080,
-    val proxyUsername: String = "",
-    val hasProxyPassword: Boolean = false,
 )
 
 class SettingsStore(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
     private val secrets: SharedPreferences = context.getSharedPreferences("secrets", Context.MODE_PRIVATE)
     private val secretCipher = SecretCipher()
+
+    init {
+        removeLegacyProxy()
+    }
+
     private val mutable = MutableStateFlow(read())
     val state: StateFlow<Settings> = mutable
 
@@ -46,52 +46,32 @@ class SettingsStore(context: Context) {
         lastSyncAttempt = prefs.getLong("last_sync_attempt", prefs.getLong("last_sync", 0)),
         lastError = prefs.getString("last_error", "") ?: "",
         hasToken = secrets.contains("token"),
-        proxyEnabled = prefs.getBoolean("proxy_enabled", false),
-        proxyHost = prefs.getString("proxy_host", "") ?: "",
-        proxyPort = prefs.getInt("proxy_port", 8080),
-        proxyUsername = prefs.getString("proxy_username", "") ?: "",
-        hasProxyPassword = secrets.contains("proxy_password"),
     )
 
-    fun resolveProxy(enabled: Boolean, host: String, port: String, username: String,
-                     password: String): ProxyConfig {
-        val cleanUsername = username.trim()
-        val secret = password.ifBlank {
-            if (cleanUsername == state.value.proxyUsername) proxyPassword().orEmpty() else ""
+    // Proxy support was removed; drop settings and the password saved by older versions.
+    private fun removeLegacyProxy() {
+        if (LEGACY_PROXY_KEYS.any(prefs::contains)) {
+            val editor = prefs.edit()
+            LEGACY_PROXY_KEYS.forEach(editor::remove)
+            if (!editor.commit()) Log.e("ShareDing", "Cannot remove legacy proxy settings")
         }
-        return ProxyConfig(enabled, host.trim(), port.toIntOrNull() ?: if (enabled) 0 else 8080,
-            cleanUsername, secret)
-            .validated()
+        if (secrets.contains(LEGACY_PROXY_PASSWORD) &&
+            !secrets.edit().remove(LEGACY_PROXY_PASSWORD).commit()) {
+            Log.e("ShareDing", "Cannot remove legacy proxy password")
+        }
     }
 
-    fun proxyConfig(): ProxyConfig {
-        val saved = state.value
-        return ProxyConfig(saved.proxyEnabled, saved.proxyHost, saved.proxyPort,
-            saved.proxyUsername, proxyPassword().orEmpty()).validated()
-    }
-
-    fun save(serverUrl: String, token: String?, tags: String, unread: Boolean, archived: Boolean,
-             proxy: ProxyConfig? = null) {
-        val config = (proxy ?: proxyConfig()).validated()
+    fun save(serverUrl: String, token: String?, tags: String, unread: Boolean, archived: Boolean) {
         if (token != null) {
             check(secrets.edit().putString("token", secretCipher.encrypt(token)).commit()) { "Cannot save API token" }
         }
-        val passwordEditor = secrets.edit()
-        if (config.username.isBlank() || config.password.isBlank()) passwordEditor.remove("proxy_password")
-        else passwordEditor.putString("proxy_password", secretCipher.encrypt(config.password))
-        check(passwordEditor.commit()) { "Cannot save proxy password" }
         val editor = prefs.edit().putString("server_url", serverUrl)
             .putString("tags", tags).putBoolean("unread", unread).putBoolean("archived", archived)
-            .putBoolean("proxy_enabled", config.enabled).putString("proxy_host", config.host)
-            .putInt("proxy_port", config.port).putString("proxy_username", config.username)
         check(editor.commit()) { "Cannot save settings" }
         mutable.value = read()
     }
 
     fun token(): String? = secrets.getString("token", null)?.let(secretCipher::decrypt)
-
-    private fun proxyPassword(): String? =
-        secrets.getString("proxy_password", null)?.let(secretCipher::decrypt)
 
     fun recordSuccess() {
         val now = System.currentTimeMillis()
@@ -104,6 +84,11 @@ class SettingsStore(context: Context) {
         check(prefs.edit().putString("last_error", message)
             .putLong("last_sync_attempt", System.currentTimeMillis()).commit())
         mutable.value = read()
+    }
+
+    private companion object {
+        val LEGACY_PROXY_KEYS = listOf("proxy_enabled", "proxy_host", "proxy_port", "proxy_username")
+        const val LEGACY_PROXY_PASSWORD = "proxy_password"
     }
 }
 

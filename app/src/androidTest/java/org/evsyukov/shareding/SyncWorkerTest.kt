@@ -11,7 +11,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.evsyukov.shareding.data.Bookmark
-import org.evsyukov.shareding.network.ProxyConfig
 import org.evsyukov.shareding.sync.SyncWorker
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -28,7 +27,7 @@ class SyncWorkerTest {
         val dao = app.container.db.bookmarks()
         MockWebServer().apply { tls.start(this) }.use { server ->
             try {
-                app.container.settings.save(tls.url(server), "secret", "", true, false, ProxyConfig())
+                app.container.settings.save(tls.url(server), "secret", "", true, false)
                 dao.insert(Bookmark(url = "https://example.com/failure", createdAt = 1))
                 dao.insert(Bookmark(url = "https://example.com/success", createdAt = 2))
                 server.enqueue(MockResponse().setBody("{}"))
@@ -39,7 +38,7 @@ class SyncWorkerTest {
                 assertEquals("https://example.com/failure", dao.batch(1).single().url)
                 assertEquals("linkding returned HTTP 400\nInvalid bookmark", app.container.settings.state.value.lastError)
             } finally {
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
                 withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
             }
         }
@@ -54,8 +53,7 @@ class SyncWorkerTest {
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
         MockWebServer().apply { tls.start(this) }.use { server ->
             try {
-                app.container.settings.save(tls.url(server), "test-token", "", true, false,
-                    ProxyConfig())
+                app.container.settings.save(tls.url(server), "test-token", "", true, false)
                 repeat(50) { index ->
                     dao.insert(Bookmark(url = "https://example.com/worker/$index", title = "Item $index"))
                 }
@@ -74,41 +72,37 @@ class SyncWorkerTest {
                 }
                 assertEquals((0 until 50).map { "https://example.com/worker/$it" }, sentUrls)
             } finally {
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
             }
         }
     }
 
-    @Test fun workerSendsWithoutFetchingPageThroughProxy() = runBlocking {
+    @Test fun workerSendsWithoutFetchingPage() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val tls = AndroidTestTls(InstrumentationRegistry.getInstrumentation().context)
         val app = context.applicationContext as ShareDingApplication
         WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
         val dao = app.container.db.bookmarks()
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
-        MockWebServer().apply { tls.start(this, tunnelProxy = true) }.use { proxy ->
+        MockWebServer().apply { tls.start(this) }.use { server ->
             try {
-                app.container.settings.save("https://linkding.invalid/", "test-token", "", true, false,
-                    ProxyConfig(true, proxy.hostName, proxy.port))
-                dao.insert(Bookmark(url = "http://page.invalid/worker"))
-                proxy.enqueue(tls.connectResponse())
-                proxy.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
-                proxy.enqueue(tls.connectResponse())
-                proxy.enqueue(MockResponse().setResponseCode(201))
+                app.container.settings.save(tls.url(server), "test-token", "", true, false)
+                val url = tls.url(server, "/worker")
+                dao.insert(Bookmark(url = url))
+                server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+                server.enqueue(MockResponse().setResponseCode(201))
                 TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
 
                 assertEquals(0, dao.count())
-                assertEquals(4, proxy.requestCount)
-                val requests = (1..4).map { proxy.takeRequest() }
-                assertEquals("CONNECT", requests[0].method)
-                assertEquals("GET", requests[1].method)
-                assertEquals("CONNECT", requests[2].method)
-                assertEquals("POST", requests[3].method)
-                val body = JsonParser.parseString(requests[3].body.readUtf8()).asJsonObject
-                assertEquals("http://page.invalid/worker", body.get("url").asString)
+                assertEquals(2, server.requestCount)
+                assertEquals("/api/tags/", server.takeRequest().path)
+                val post = server.takeRequest()
+                assertEquals("/api/bookmarks/", post.path)
+                val body = JsonParser.parseString(post.body.readUtf8()).asJsonObject
+                assertEquals(url, body.get("url").asString)
                 assertEquals(false, body.has("title"))
             } finally {
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
             }
         }
     }
@@ -122,8 +116,7 @@ class SyncWorkerTest {
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
         MockWebServer().apply { tls.start(this) }.use { server ->
             try {
-                app.container.settings.save(tls.url(server), "test-token", "", true, false,
-                    ProxyConfig())
+                app.container.settings.save(tls.url(server), "test-token", "", true, false)
                 dao.insert(Bookmark(url = "https://example.com/worker", title = "Worker test",
                     metadataFetched = true))
                 assertEquals("test-token", app.container.settings.token())
@@ -147,7 +140,7 @@ class SyncWorkerTest {
                 assertEquals("/api/tags/", server.takeRequest().path)
                 assertEquals("/api/bookmarks/", server.takeRequest().path)
             } finally {
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
             }
         }
     }
@@ -160,8 +153,7 @@ class SyncWorkerTest {
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
         MockWebServer().use { server ->
             try {
-                app.container.settings.save(server.url("/").toString(), "must-not-send", "", true, false,
-                    ProxyConfig())
+                app.container.settings.save(server.url("/").toString(), "must-not-send", "", true, false)
                 val url = "https://example.com/queued-after-http-server"
                 dao.insert(Bookmark(url = url, title = "Keep this bookmark", metadataFetched = true))
 
@@ -172,7 +164,7 @@ class SyncWorkerTest {
                 assertEquals("Keep this bookmark", dao.findByUrl(url)?.title)
                 assertEquals("failed", dao.findByUrl(url)?.status)
             } finally {
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
             }
         }
     }
@@ -184,33 +176,29 @@ class SyncWorkerTest {
         WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
         val dao = app.container.db.bookmarks()
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
-        MockWebServer().apply { tls.start(this, tunnelProxy = true) }.use { proxy ->
+        MockWebServer().apply { tls.start(this) }.use { server ->
             try {
-                app.container.settings.save("https://linkding.invalid/", "test-token", "", true, false,
-                    ProxyConfig(true, proxy.hostName, proxy.port))
+                app.container.settings.save(tls.url(server), "test-token", "", true, false)
                 val suppliedTitle = "Заголовок браузера — café"
-                dao.insert(Bookmark(url = "http://page.invalid/article", title = suppliedTitle))
-                proxy.enqueue(tls.connectResponse())
-                proxy.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
-                proxy.enqueue(tls.connectResponse())
-                proxy.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+                val url = tls.url(server, "/article")
+                dao.insert(Bookmark(url = url, title = suppliedTitle))
+                server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
 
                 TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
 
                 assertEquals(0, dao.count())
-                assertEquals(4, proxy.requestCount)
-                assertEquals("CONNECT", proxy.takeRequest().method)
-                assertEquals("GET", proxy.takeRequest().method)
-                assertEquals("CONNECT", proxy.takeRequest().method)
-                val post = proxy.takeRequest()
+                assertEquals(2, server.requestCount)
+                assertEquals("/api/tags/", server.takeRequest().path)
+                val post = server.takeRequest()
                 assertEquals("POST", post.method)
-                val rawJson = post.body.readUtf8()
-                val body = JsonParser.parseString(rawJson).asJsonObject
-                assertEquals("http://page.invalid/article", body.get("url").asString)
+                assertEquals("/api/bookmarks/", post.path)
+                val body = JsonParser.parseString(post.body.readUtf8()).asJsonObject
+                assertEquals(url, body.get("url").asString)
                 assertEquals(false, body.has("title"))
                 assertEquals("", body.get("description").asString)
             } finally {
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
             }
         }
     }
@@ -222,29 +210,25 @@ class SyncWorkerTest {
         WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
         val dao = app.container.db.bookmarks()
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
-        MockWebServer().apply { tls.start(this, tunnelProxy = true) }.use { proxy ->
+        MockWebServer().apply { tls.start(this) }.use { server ->
             try {
-                app.container.settings.save("https://linkding.invalid/", "test-token", "", true, false,
-                    ProxyConfig(true, proxy.hostName, proxy.port))
-                dao.insert(Bookmark(url = "http://page.invalid/unavailable"))
-                proxy.enqueue(tls.connectResponse())
-                proxy.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
-                proxy.enqueue(tls.connectResponse())
-                proxy.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+                app.container.settings.save(tls.url(server), "test-token", "", true, false)
+                dao.insert(Bookmark(url = tls.url(server, "/unavailable")))
+                server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
 
                 TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
 
                 assertEquals(0, dao.count())
-                assertEquals("CONNECT", proxy.takeRequest().method)
-                assertEquals("GET", proxy.takeRequest().method)
-                assertEquals("CONNECT", proxy.takeRequest().method)
-                val post = proxy.takeRequest()
+                assertEquals(2, server.requestCount)
+                assertEquals("/api/tags/", server.takeRequest().path)
+                val post = server.takeRequest()
                 assertEquals("POST", post.method)
                 val body = JsonParser.parseString(post.body.readUtf8()).asJsonObject
                 assertEquals(false, body.has("title"))
                 assertEquals("", body.get("description").asString)
             } finally {
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
             }
         }
     }
@@ -256,16 +240,13 @@ class SyncWorkerTest {
         WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
         val dao = app.container.db.bookmarks()
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
-        MockWebServer().apply { tls.start(this, tunnelProxy = true) }.use { proxy ->
+        MockWebServer().apply { tls.start(this) }.use { server ->
             try {
-                app.container.settings.save("https://linkding.invalid/", "test-token", "", true, false,
-                    ProxyConfig(true, proxy.hostName, proxy.port))
-                val url = "http://page.invalid/retry"
+                app.container.settings.save(tls.url(server), "test-token", "", true, false)
+                val url = tls.url(server, "/retry")
                 dao.insert(Bookmark(url = url, title = "Manual title", sendTitle = true))
-                proxy.enqueue(tls.connectResponse())
-                proxy.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
-                proxy.enqueue(tls.connectResponse())
-                proxy.enqueue(MockResponse().setResponseCode(503))
+                server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                server.enqueue(MockResponse().setResponseCode(503))
 
                 TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
 
@@ -275,28 +256,22 @@ class SyncWorkerTest {
                 assertEquals(true, queued?.sendTitle)
                 assertEquals("failed", queued?.status)
 
-                proxy.enqueue(tls.connectResponse())
-                proxy.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
-                proxy.enqueue(tls.connectResponse())
-                proxy.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+                server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
                 TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
 
                 assertEquals(0, dao.count())
-                assertEquals(8, proxy.requestCount)
-                assertEquals("CONNECT", proxy.takeRequest().method)
-                assertEquals("GET", proxy.takeRequest().method)
-                assertEquals("CONNECT", proxy.takeRequest().method)
-                assertEquals("POST", proxy.takeRequest().method)
-                assertEquals("CONNECT", proxy.takeRequest().method)
-                assertEquals("GET", proxy.takeRequest().method)
-                assertEquals("CONNECT", proxy.takeRequest().method)
-                val retry = proxy.takeRequest()
+                assertEquals(4, server.requestCount)
+                assertEquals("/api/tags/", server.takeRequest().path)
+                assertEquals("POST", server.takeRequest().method)
+                assertEquals("/api/tags/", server.takeRequest().path)
+                val retry = server.takeRequest()
                 assertEquals("POST", retry.method)
                 val body = JsonParser.parseString(retry.body.readUtf8()).asJsonObject
                 assertEquals("Manual title", body.get("title").asString)
                 assertEquals("", body.get("description").asString)
             } finally {
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
             }
         }
     }

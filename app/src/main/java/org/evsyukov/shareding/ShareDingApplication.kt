@@ -47,8 +47,8 @@ class AppContainer(application: Application) {
     val db: AppDatabase = Room.databaseBuilder(application, AppDatabase::class.java, "bookmarks.db")
         .addMigrations(AppDatabase.MIGRATION_1_2).build()
     val settings = SettingsStore(application)
-    val api = LinkdingApi { settings.proxyConfig() }
-    val pageFetcher = PageMetadataFetcher { settings.proxyConfig() }
+    val api = LinkdingApi()
+    val pageFetcher = PageMetadataFetcher()
     val networkTracker = NetworkTracker(application)
     val networkSelector = NetworkSelector(networkTracker, api, pageFetcher)
     val scheduler = SyncScheduler(application)

@@ -17,7 +17,6 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import okhttp3.mockwebserver.SocketPolicy
 import org.evsyukov.shareding.data.Bookmark
-import org.evsyukov.shareding.network.ProxyConfig
 import org.evsyukov.shareding.sync.SyncRecoveryWorker
 import org.evsyukov.shareding.sync.SyncWorker
 import org.junit.Assert.assertEquals
@@ -41,7 +40,7 @@ class QueueEditingSyncTest {
         MockWebServer().apply { tls.start(this) }.use { server ->
             val owner = "queue-edit-blocked"
             try {
-                app.container.settings.save(tls.url(server), "secret", "", true, false, ProxyConfig())
+                app.container.settings.save(tls.url(server), "secret", "", true, false)
                 val id = dao.insert(Bookmark(url = "https://example.com/original", createdAt = 1))
                 scheduler.pauseForEdit(owner)
                 val sharedId = dao.insert(Bookmark(url = "https://example.com/shared", createdAt = 2))
@@ -71,7 +70,7 @@ class QueueEditingSyncTest {
             } finally {
                 scheduler.finishEdit(owner)
                 manager.cancelUniqueWork("linkding-sync").result.get()
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
                 withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
             }
         }
@@ -90,7 +89,7 @@ class QueueEditingSyncTest {
         MockWebServer().apply { tls.start(this) }.use { server ->
             val owner = "queue-edit-save"
             try {
-                app.container.settings.save(tls.url(server), "secret", "", true, false, ProxyConfig())
+                app.container.settings.save(tls.url(server), "secret", "", true, false)
                 val id = dao.insert(Bookmark(url = "https://example.com/stuck", createdAt = 1))
                 server.dispatcher = object : Dispatcher() {
                     override fun dispatch(request: RecordedRequest): MockResponse {
@@ -126,7 +125,7 @@ class QueueEditingSyncTest {
             } finally {
                 scheduler.finishEdit(owner)
                 manager.cancelUniqueWork("linkding-sync").result.get()
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
                 withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
             }
         }
@@ -143,7 +142,7 @@ class QueueEditingSyncTest {
         MockWebServer().apply { tls.start(this) }.use { server ->
             val owner = "queue-edit-cancel"
             try {
-                app.container.settings.save(tls.url(server), "secret", "", true, false, ProxyConfig())
+                app.container.settings.save(tls.url(server), "secret", "", true, false)
                 scheduler.pauseForEdit(owner)
                 val before = manager.getWorkInfosForUniqueWork("linkding-sync").get()
                     .map { it.id }.toSet()
@@ -158,7 +157,7 @@ class QueueEditingSyncTest {
             } finally {
                 scheduler.finishEdit(owner)
                 manager.cancelUniqueWork("linkding-sync").result.get()
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
                 withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
             }
         }

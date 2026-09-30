@@ -13,7 +13,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.Bookmark
-import org.evsyukov.shareding.network.ProxyConfig
 import org.evsyukov.shareding.sync.BlockingTestWorker
 import org.evsyukov.shareding.sync.SyncRecoveryWorker
 import org.evsyukov.shareding.sync.SyncScheduler
@@ -61,15 +60,14 @@ class SyncRecoveryTest {
         workManager.cancelUniqueWork("linkding-sync").result.get()
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
         try {
-            app.container.settings.save("http://127.0.0.1:1/", "test-token", "", true, false,
-                ProxyConfig())
+            app.container.settings.save("http://127.0.0.1:1/", "test-token", "", true, false)
             val before = workManager.getWorkInfosForUniqueWork("linkding-sync").get().map { it.id }
             val result = TestListenableWorkerBuilder<SyncRecoveryWorker>(context).build().doWork()
             assertTrue(result is ListenableWorker.Result.Success)
             val after = workManager.getWorkInfosForUniqueWork("linkding-sync").get().map { it.id }
             assertEquals(before, after)
         } finally {
-            app.container.settings.save("", null, "", true, false, ProxyConfig())
+            app.container.settings.save("", null, "", true, false)
         }
     }
 
@@ -80,7 +78,7 @@ class SyncRecoveryTest {
         workManager.cancelUniqueWork("linkding-sync").result.get()
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
         try {
-            app.container.settings.save("", null, "", true, false, ProxyConfig())
+            app.container.settings.save("", null, "", true, false)
             app.container.db.bookmarks().insert(Bookmark(url = "https://example.com/unconfigured"))
             val before = workManager.getWorkInfosForUniqueWork("linkding-sync").get().map { it.id }
             val result = TestListenableWorkerBuilder<SyncRecoveryWorker>(context).build().doWork()
@@ -100,8 +98,7 @@ class SyncRecoveryTest {
         workManager.cancelUniqueWork("linkding-sync").result.get()
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
         try {
-            app.container.settings.save("http://127.0.0.1:1/", "test-token", "", true, false,
-                ProxyConfig())
+            app.container.settings.save("http://127.0.0.1:1/", "test-token", "", true, false)
             app.container.db.bookmarks().insert(Bookmark(url = "https://example.com/orphaned"))
             val before = workManager.getWorkInfosForUniqueWork("linkding-sync").get()
                 .map { it.id }.toSet()
@@ -114,7 +111,7 @@ class SyncRecoveryTest {
             assertEquals(1, app.container.db.bookmarks().count())
         } finally {
             workManager.cancelUniqueWork("linkding-sync").result.get()
-            app.container.settings.save("", null, "", true, false, ProxyConfig())
+            app.container.settings.save("", null, "", true, false)
             withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
         }
     }
@@ -126,8 +123,7 @@ class SyncRecoveryTest {
         workManager.cancelUniqueWork("linkding-sync").result.get()
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
         try {
-            app.container.settings.save("http://127.0.0.1:1/", "test-token", "", true, false,
-                ProxyConfig())
+            app.container.settings.save("http://127.0.0.1:1/", "test-token", "", true, false)
             app.container.db.bookmarks().insert(Bookmark(url = "https://example.com/pending"))
             val existing = OneTimeWorkRequestBuilder<SyncWorker>()
                 .setInitialDelay(1, TimeUnit.DAYS).build()
@@ -142,7 +138,7 @@ class SyncRecoveryTest {
             assertEquals(WorkInfo.State.ENQUEUED, unfinished.single().state)
         } finally {
             workManager.cancelUniqueWork("linkding-sync").result.get()
-            app.container.settings.save("", null, "", true, false, ProxyConfig())
+            app.container.settings.save("", null, "", true, false)
             withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
         }
     }
@@ -155,8 +151,7 @@ class SyncRecoveryTest {
         withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
         BlockingTestWorker.reset()
         try {
-            app.container.settings.save("http://127.0.0.1:1/", "test-token", "", true, false,
-                ProxyConfig())
+            app.container.settings.save("http://127.0.0.1:1/", "test-token", "", true, false)
             app.container.db.bookmarks().insert(Bookmark(url = "https://example.com/running"))
             val existing = OneTimeWorkRequestBuilder<BlockingTestWorker>().build()
             workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.KEEP,
@@ -172,7 +167,7 @@ class SyncRecoveryTest {
         } finally {
             BlockingTestWorker.release.countDown()
             workManager.cancelUniqueWork("linkding-sync").result.get()
-            app.container.settings.save("", null, "", true, false, ProxyConfig())
+            app.container.settings.save("", null, "", true, false)
             withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
         }
     }

@@ -18,7 +18,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.evsyukov.shareding.data.Bookmark
-import org.evsyukov.shareding.network.ProxyConfig
 import org.evsyukov.shareding.sync.BlockingTestWorker
 import org.evsyukov.shareding.sync.SyncScheduler
 import org.evsyukov.shareding.sync.SyncWorker
@@ -193,8 +192,7 @@ class SyncSchedulerTest {
         BlockingTestWorker.reset()
         MockWebServer().apply { tls.start(this) }.use { server ->
             try {
-                app.container.settings.save(tls.url(server), "test-token", "", true, false,
-                    ProxyConfig())
+                app.container.settings.save(tls.url(server), "test-token", "", true, false)
                 server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
                 server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
                 val current = OneTimeWorkRequestBuilder<BlockingTestWorker>().build()
@@ -223,7 +221,7 @@ class SyncSchedulerTest {
             } finally {
                 BlockingTestWorker.release.countDown()
                 workManager.cancelUniqueWork("linkding-sync").result.get()
-                app.container.settings.save("", null, "", true, false, ProxyConfig())
+                app.container.settings.save("", null, "", true, false)
                 withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
             }
         }

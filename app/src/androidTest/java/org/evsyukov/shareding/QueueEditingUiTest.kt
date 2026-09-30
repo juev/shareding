@@ -19,7 +19,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.Bookmark
-import org.evsyukov.shareding.network.ProxyConfig
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,7 +36,7 @@ class QueueEditingUiTest {
     @Before fun startWithoutLinkding() {
         app = compose.activity.application as ShareDingApplication
         WorkManager.getInstance(app).cancelUniqueWork("linkding-sync").result.get()
-        app.container.settings.save("", null, "", true, false, ProxyConfig())
+        app.container.settings.save("", null, "", true, false)
         runBlocking { withContext(Dispatchers.IO) { app.container.db.clearAllTables() } }
     }
 
@@ -51,7 +50,7 @@ class QueueEditingUiTest {
             }
         }
         WorkManager.getInstance(app).cancelUniqueWork("linkding-sync").result.get()
-        app.container.settings.save("", null, "", true, false, ProxyConfig())
+        app.container.settings.save("", null, "", true, false)
         runBlocking { withContext(Dispatchers.IO) { app.container.db.clearAllTables() } }
     }
 
