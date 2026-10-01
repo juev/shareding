@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -33,7 +34,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
@@ -89,6 +92,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -156,6 +160,9 @@ private fun AppContent(activity: ComponentActivity, content: @Composable () -> U
     }
     ShareDingTheme(content = content)
 }
+
+/** Fills the width up to a readable limit, so content does not stretch across tablets. */
+private fun Modifier.contentWidth(): Modifier = widthIn(max = 640.dp).fillMaxWidth()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -290,8 +297,8 @@ private fun QueueSyncStatus(settings: Settings, workInfos: List<WorkInfo>, queue
         queueCount > 0 && active.isNotEmpty() -> "Waiting for network or retry"
         else -> "Ready to sync"
     }
-    Surface(tonalElevation = 1.dp) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    Surface(tonalElevation = 1.dp) { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Column(Modifier.contentWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(status, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -303,7 +310,7 @@ private fun QueueSyncStatus(settings: Settings, workInfos: List<WorkInfo>, queue
                 color = if (settings.lastError.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant
                     else MaterialTheme.colorScheme.error)
         }
-    }
+    } }
 }
 
 @Composable
@@ -332,11 +339,12 @@ private fun QueueScreen(bookmarks: List<Bookmark>, padding: PaddingValues,
         }
     }
     LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
         items(bookmarks, key = { it.id }) { bookmark ->
             var expanded by rememberSaveable(bookmark.id) { mutableStateOf(false) }
             Card(onClick = { expanded = !expanded }, shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.animateContentSize().semantics {
+                modifier = Modifier.contentWidth().animateContentSize().semantics {
                     stateDescription = if (expanded) "Expanded" else "Collapsed"
                 }) {
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -537,14 +545,17 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
             }
         }) },
         bottomBar = {
-            Button(onClick = save, enabled = !saving && !busy,
-                modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text("Save bookmark")
+            Box(Modifier.fillMaxWidth().imePadding(), contentAlignment = Alignment.Center) {
+                Button(onClick = save, enabled = !saving && !busy,
+                    modifier = Modifier.contentWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text("Save bookmark")
+                }
             }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
-            .padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.contentWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Save a link now; ShareDing will send it when linkding is available.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(url, { url = it; metadataStatus = null }, modifier = Modifier.fillMaxWidth(),
@@ -599,6 +610,7 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
             }
             metadataStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
         }
     }
 }
@@ -663,8 +675,9 @@ private fun SettingsScreen(settings: Settings, notifier: SyncNotifier, padding: 
     var saveFailed by rememberSaveable { mutableStateOf(false) }
     val savedConnectionIsCurrent = server.trim() == settings.serverUrl && token.isBlank()
     Column(Modifier.fillMaxSize().padding(padding)) {
-    LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)) {
+    LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
         item {
             SettingsGroup("Linkding") {
                 OutlinedTextField(server, {
@@ -728,16 +741,8 @@ private fun SettingsScreen(settings: Settings, notifier: SyncNotifier, padding: 
                     tagLoadError && savedConnectionIsCurrent,
                     canRefresh = settings.hasToken && settings.serverUrl.isNotBlank() &&
                         savedConnectionIsCurrent, onRefreshTags = onRefreshTags)
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Mark unread")
-                    Switch(unread, { unread = it; saveStatus = null })
-                }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Archive")
-                    Switch(archived, { archived = it; saveStatus = null })
-                }
+                SwitchRow("Mark unread", unread) { unread = it; saveStatus = null }
+                SwitchRow("Archive", archived) { archived = it; saveStatus = null }
             }
         }
         item {
@@ -787,8 +792,8 @@ private fun SettingsScreen(settings: Settings, notifier: SyncNotifier, padding: 
             }
         }
     }
-    Surface(tonalElevation = 2.dp) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    Surface(tonalElevation = 2.dp) { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Column(Modifier.contentWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Button(onClick = {
                 scope.launch {
@@ -820,7 +825,7 @@ private fun SettingsScreen(settings: Settings, notifier: SyncNotifier, padding: 
                         else MaterialTheme.colorScheme.primary)
             }
         }
-    }
+    } }
     }
 }
 
@@ -830,9 +835,21 @@ private fun appVersion(context: Context): String {
     return "${info.versionName} (${info.longVersionCode})"
 }
 
+/** One toggleable row, so a screen reader announces the label together with the switch state. */
+@Composable
+private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+        .toggleable(checked, role = Role.Switch, onValueChange = onCheckedChange),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label)
+        Switch(checked, onCheckedChange = null)
+    }
+}
+
 @Composable
 private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.contentWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.primary)
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {

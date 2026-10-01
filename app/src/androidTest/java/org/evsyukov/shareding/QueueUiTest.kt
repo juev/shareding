@@ -2,7 +2,13 @@ package org.evsyukov.shareding
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher.Companion.expectValue
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.hasScrollAction
@@ -289,6 +295,21 @@ class QueueUiTest {
         compose.onNodeWithText("Server URL").assertIsDisplayed()
         assertTrue(compose.onAllNodes(hasText("proxy", substring = true, ignoreCase = true))
             .fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test fun bookmarkDefaultSwitchesAreLabelledAndToggleFromTheirRow() {
+        val app = compose.activity.application as ShareDingApplication
+        app.container.settings.save("", null, "", true, false)
+        compose.onNodeWithText("Settings").performClick()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Archive"))
+        // A screen reader announces the label together with the switch state.
+        compose.onNodeWithText("Mark unread").assert(expectValue(SemanticsProperties.Role, Role.Switch))
+            .assertIsOn()
+        compose.onNodeWithText("Archive").assert(expectValue(SemanticsProperties.Role, Role.Switch))
+            .assertIsOff().performClick().assertIsOn()
+        compose.onNodeWithText("Save settings").performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitUntil(5_000) { app.container.settings.state.value.archived }
+        assertTrue(app.container.settings.state.value.unread)
     }
 
     @Test fun settingsShowGrantedNotificationAlertsAsOn() {
