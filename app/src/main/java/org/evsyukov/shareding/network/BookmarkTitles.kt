@@ -11,18 +11,24 @@ object BookmarkTitles {
     /**
      * Title an app passed along with a shared link, unchanged, or empty when it is just a link.
      * Browsers sharing a long-pressed link put the link, or its shortened label such as
-     * `example.com/news/2026/9...`, into the subject.
+     * `example.com/news/2026/9...`, into the subject. Mastodon builds a link from several elements,
+     * so its text arrives with whitespace inside: `https:// example.com/news /2026/9/article/`.
      */
     fun shared(title: String, url: String): String {
         val line = normalize(title)
         if (Regex("https?://\\S+", RegexOption.IGNORE_CASE).matches(line)) return ""
-        val label = withoutScheme(line)
+        val joined = line.replace(" ", "")
+        val sameLink = runCatching { Urls.bookmark(joined) }.getOrNull() == url
+        return if (sameLink || isLabelOf(line, url) || isLabelOf(joined, url)) "" else title
+    }
+
+    private fun isLabelOf(text: String, url: String): Boolean {
+        val label = withoutScheme(text)
         val link = withoutScheme(url)
-        if (label == link) return ""
+        if (label == link) return true
         val shortened = label.removeSuffix("...").removeSuffix("…")
-        val isLabel = shortened != label && shortened.contains('.') && shortened.none(Char::isWhitespace) &&
+        return shortened != label && shortened.contains('.') && shortened.none(Char::isWhitespace) &&
             link.startsWith(shortened)
-        return if (isLabel) "" else title
     }
 
     private fun withoutScheme(value: String): String =
