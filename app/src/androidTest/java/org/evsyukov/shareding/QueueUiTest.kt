@@ -181,6 +181,7 @@ class QueueUiTest {
     }
 
     @Test fun addFormAsksBeforeDiscardingTypedLink() {
+        clearQueue()
         compose.onNodeWithText("Add bookmark").performClick()
         compose.onNodeWithText("URL").performTextInput("https://example.com/typed")
         compose.onNodeWithContentDescription("Back to queue").performClick()
