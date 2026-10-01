@@ -20,12 +20,33 @@ class ShareIntentTest {
         val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain" }
         @Suppress("DEPRECATION")
         val targets = context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
-        assertTrue(targets.any { it.activityInfo.packageName == context.packageName &&
-            it.activityInfo.name == ShareActivity::class.java.name })
+        // A second target would make Android group them and ask which one to use.
         val labels = targets.filter { it.activityInfo.packageName == context.packageName }
             .associate { it.activityInfo.name to it.loadLabel(context.packageManager).toString() }
-        assertEquals("ShareDing", labels[ShareActivity::class.java.name])
-        assertEquals("ShareDing…", labels[ShareFormActivity::class.java.name])
+        assertEquals(mapOf(ShareActivity::class.java.name to "ShareDing"), labels)
+    }
+
+    @Test fun shareDropsTitleThatIsTheLinkSplitByWhitespace() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val url = "https://example.com/mastodon/archive/post-${System.nanoTime()}/"
+        val intent = Intent(context, ShareActivity::class.java).apply {
+            action = Intent.ACTION_SEND
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, url)
+            putExtra(Intent.EXTRA_SUBJECT,
+                url.replace("https://", "https:// ").replace("/archive/", "/archive /"))
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+        val dao = (context.applicationContext as ShareDingApplication).container.db.bookmarks()
+        var bookmark: org.evsyukov.shareding.data.Bookmark? = null
+        for (attempt in 0 until 30) {
+            bookmark = dao.findByUrl(url)
+            if (bookmark != null) break
+            delay(100)
+        }
+        assertEquals("", bookmark?.title)
+        assertEquals(false, bookmark?.sendTitle)
     }
 
     @Test fun sharePersistsWithoutServerConfiguration() = runBlocking {
