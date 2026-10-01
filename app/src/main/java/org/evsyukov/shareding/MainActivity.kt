@@ -94,7 +94,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.ViewModelProvider
 import androidx.work.WorkInfo
 import java.text.DateFormat
 import java.util.Date
@@ -117,9 +116,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val editor = ViewModelProvider(this)[QueueEditorViewModel::class.java]
         setContent {
-            AppContent(this) { ShareDingScreen(container, editor) }
+            AppContent(this) { ShareDingScreen(container) }
         }
     }
 
@@ -161,12 +159,10 @@ private fun AppContent(activity: ComponentActivity, content: @Composable () -> U
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ShareDingScreen(container: AppContainer, editor: QueueEditorViewModel) {
+private fun ShareDingScreen(container: AppContainer) {
     val bookmarks by container.db.bookmarks().observeAll().collectAsState(initial = emptyList())
     val settings by container.settings.state.collectAsState()
     val workInfos by container.scheduler.workInfos.collectAsState(initial = emptyList())
-    val paused by container.scheduler.isPaused.collectAsState()
-    val editing by editor.state.collectAsState()
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<Bookmark?>(null) }
@@ -201,17 +197,10 @@ private fun ShareDingScreen(container: AppContainer, editor: QueueEditorViewMode
         }
     }
 
-    LaunchedEffect(editing.notice) {
-        editing.notice?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-            editor.consumeNotice()
-        }
-    }
-
-    LaunchedEffect(settings.serverUrl, settings.hasToken, selectedTab, showAdd, editing.active, tagRefresh) {
+    LaunchedEffect(settings.serverUrl, settings.hasToken, selectedTab, showAdd, tagRefresh) {
         serverTags = emptyList()
         tagLoadError = false
-        if ((!showAdd && !editing.active && selectedTab != 1) || settings.serverUrl.isBlank() || !settings.hasToken) {
+        if ((!showAdd && selectedTab != 1) || settings.serverUrl.isBlank() || !settings.hasToken) {
             return@LaunchedEffect
         }
         try {
@@ -222,13 +211,6 @@ private fun ShareDingScreen(container: AppContainer, editor: QueueEditorViewMode
         } catch (_: Exception) {
             tagLoadError = true
         }
-    }
-
-    if (editing.active) {
-        QueueEditorScreen(editing, editor, serverTags, tagLoadError,
-            canRefreshTags = settings.hasToken && settings.serverUrl.isNotBlank(),
-            onRefreshTags = { tagRefresh++ })
-        return
     }
 
     if (showAdd) {
@@ -243,7 +225,7 @@ private fun ShareDingScreen(container: AppContainer, editor: QueueEditorViewMode
             TopAppBar(title = { Text(if (selectedTab == 0) "Queue" else "Settings") }, actions = {
                 if (selectedTab == 0) IconButton(onClick = {
                     runQueueAction { container.scheduler.restartSync() }
-                }, enabled = !scheduling && !paused) {
+                }, enabled = !scheduling) {
                     Icon(Icons.Default.Refresh, contentDescription = "Sync now")
                 }
             })
@@ -263,7 +245,7 @@ private fun ShareDingScreen(container: AppContainer, editor: QueueEditorViewMode
         },
     ) { padding ->
         if (selectedTab == 0) Column(Modifier.fillMaxSize().padding(padding)) {
-            QueueSyncStatus(settings, workInfos, bookmarks.size, paused)
+            QueueSyncStatus(settings, workInfos, bookmarks.size)
             QueueScreen(bookmarks, PaddingValues(0.dp),
             onAdd = { showAdd = true },
             onRetry = { bookmark ->
@@ -272,7 +254,7 @@ private fun ShareDingScreen(container: AppContainer, editor: QueueEditorViewMode
                     container.scheduler.restartSync()
                 }
             },
-            onDelete = { deleteTarget = it }, onEdit = { editor.open(it.id) })
+            onDelete = { deleteTarget = it })
         }
         else SettingsScreen(settings, container.notifier, padding, serverTags, tagLoadError,
             onSave = { server, token, tags, unread, archived ->
@@ -300,10 +282,9 @@ private fun ShareDingScreen(container: AppContainer, editor: QueueEditorViewMode
 }
 
 @Composable
-private fun QueueSyncStatus(settings: Settings, workInfos: List<WorkInfo>, queueCount: Int, paused: Boolean) {
+private fun QueueSyncStatus(settings: Settings, workInfos: List<WorkInfo>, queueCount: Int) {
     val active = workInfos.filter { !it.state.isFinished }
     val status = when {
-        paused -> "Sync paused while editing"
         active.any { it.state == WorkInfo.State.RUNNING } -> "Syncing…"
         queueCount > 0 && (settings.serverUrl.isBlank() || !settings.hasToken) -> "Set up linkding in Settings to sync"
         queueCount > 0 && active.isNotEmpty() -> "Waiting for network or retry"
@@ -327,8 +308,7 @@ private fun QueueSyncStatus(settings: Settings, workInfos: List<WorkInfo>, queue
 
 @Composable
 private fun QueueScreen(bookmarks: List<Bookmark>, padding: PaddingValues,
-                        onAdd: () -> Unit, onRetry: (Bookmark) -> Unit, onDelete: (Bookmark) -> Unit,
-                        onEdit: (Bookmark) -> Unit) {
+                        onAdd: () -> Unit, onRetry: (Bookmark) -> Unit, onDelete: (Bookmark) -> Unit) {
     if (bookmarks.isEmpty()) {
         Column(Modifier.fillMaxSize().padding(padding).padding(24.dp),
             verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -436,7 +416,6 @@ private fun QueueScreen(bookmarks: List<Bookmark>, padding: PaddingValues,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall)
                     }
-                    if (expanded) TextButton(onClick = { onEdit(bookmark) }) { Text("Edit bookmark") }
                 }
             }
         }
