@@ -1,0 +1,1 @@
+The ShareDing… Share option and queue editing are removed. One Share target saves a link in a single tap again; queued links can still be expanded, retried, and deleted. Link text shared from Mastodon timelines, where the link arrives split by spaces, is no longer kept as the title.
