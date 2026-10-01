@@ -1,6 +1,6 @@
 # Sending links to linkding on Android
 
-Status: R1–R23 and R25–R29 implemented with automated coverage on Android 9 and 16. R24 (queue editing rules) was removed on 2026-10-01 together with the queue editor and the "ShareDing…" form Share target; R23 and R29 now state what remains. WorkManager may delay recovery under Android power restrictions. A real VPN has not been tested manually.
+Status: R1–R23 and R25–R30 implemented with automated coverage on Android 9 and 16. R24 (queue editing rules) was removed on 2026-10-01 together with the queue editor and the "ShareDing…" form Share target; R23 and R29 now state what remains. WorkManager may delay recovery under Android power restrictions. A real VPN has not been tested manually.
 
 Sources: the user's requirements on 2026-09-26 through 2026-09-30, including the decision to send titles from the Add Bookmark form and omit titles from Share and the 2026-10-01 decision to remove queue editing and the form Share target, the agreed RFCs, the iOS app in the sibling `share` repository, the observed Chrome share Intent on Android 16, and the [linkding API documentation](https://github.com/sissbruecker/linkding/blob/master/docs/src/content/docs/api.md).
 
@@ -38,6 +38,7 @@ The app accepts a link from Android's Share menu or its add form, saves it on th
 - R27. The Add Bookmark URL field has a paste button. It reads the clipboard only when tapped and replaces the field with the first HTTP(S) link found in the clipboard text, extracted and cleaned as in Share. Without a link, it shows a short message and leaves the field unchanged.
 - R28. Sync errors that retrying cannot fix (HTTP 401/403, 404, the HTTPS requirement, an unreadable token) show one notification per error kind until the kind changes or a sync succeeds. If the oldest queued link is older than 24 hours while server settings are present, show one "waiting" notification for that link. Tapping a notification opens the app; a successful sync or an empty queue removes them. Transient errors do not notify. On Android 13+, request the notification permission once, after a sync error is recorded. Settings shows whether sync alerts are on; its Turn on action repeats the permission request while Android allows it and otherwise opens the system notification settings. Without the permission or with notifications turned off, sync behaves the same and errors stay visible in Queue.
 - R29. Leaving the Add Bookmark form with a changed draft asks for confirmation; an unchanged draft closes directly.
+- R30. Every interactive control has a name a screen reader can announce. A setting switch and its label form one toggleable element, so the label is read with the state and a tap anywhere on the row toggles it. On screens wider than 640 dp the queue, both forms, Settings, and the Save buttons keep a 640 dp width and stay centred; narrower screens use the full width.
 
 ## Invariants and compatibility
 
@@ -85,6 +86,7 @@ For R16–R17, Share titles serve as local labels. A persisted flag distinguishe
 - R27: Paste text containing a tracked link and text without a link. Covered by `QueueUiTest.pasteButtonFillsUrlFromClipboard` and `QueueUiTest.pasteWithoutLinkKeepsUrlField`.
 - R28: Classify errors, show and deduplicate problem and waiting notifications, clear them after success, and show the Settings state. Deny the permission twice on Android 13+ and confirm Turn on first asks again, then opens system settings; granting it outside the app switches the state to On on return. Covered by `SyncProblemTest`, `NotificationAccessTest`, `SyncNotifierTest`, and `QueueUiTest.settingsShowGrantedNotificationAlertsAsOn`; the denial flow was checked manually on API 36.
 - R1, R29: Confirm the package exposes one Share target labelled ShareDing; leave the Add Bookmark form with a typed link and confirm the discard prompt. Covered by `ShareIntentTest.appearsInTextShareTargets` and `QueueUiTest.addFormAsksBeforeDiscardingTypedLink`.
+- R30: Find "Mark unread" and "Archive" in Settings as switches and toggle one by its label; covered by `QueueUiTest.bookmarkDefaultSwitchesAreLabelledAndToggleFromTheirRow`. The width limit was checked on an API 36 emulator set to a 1280 × 800 dp landscape display and to the default phone size; it has no automated test.
 
 Automated checks: `./gradlew assembleDebug assembleRelease testDebugUnitTest testReleaseUnitTest lintDebug lintRelease connectedDebugAndroidTest`. URL, metadata, and linkding API cases are covered in `app/src/test/java/org/evsyukov/shareding/network/`; Room queue, Share Intent, worker, scheduler, and UI cases are covered in `app/src/androidTest/java/org/evsyukov/shareding/`.
 
