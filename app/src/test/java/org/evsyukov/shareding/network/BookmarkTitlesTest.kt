@@ -33,6 +33,26 @@ class BookmarkTitlesTest {
         assertEquals("other.net/news...", BookmarkTitles.shared("other.net/news...", url))
     }
 
+    @Test fun sharedLinkSplitByWhitespaceIsDropped() {
+        // Mastodon builds a link from a hidden scheme, a visible part and a hidden tail.
+        assertEquals("", BookmarkTitles.shared(
+            "https:// buttondown.com/chadkoh/archive /getting-my-hands-dirty/",
+            "https://buttondown.com/chadkoh/archive/getting-my-hands-dirty/"))
+        assertEquals("", BookmarkTitles.shared("http://www. youtube.com/watch?v=GxG2NG1ZLtw",
+            "http://www.youtube.com/watch?v=GxG2NG1ZLtw"))
+        assertEquals("", BookmarkTitles.shared("https://\nexample.com/a\n?utm_source=feed&id=5",
+            "https://example.com/a?id=5"))
+        assertEquals("", BookmarkTitles.shared("example.com/news /2026/9...",
+            "https://example.com/news/2026/9/article/"))
+    }
+
+    @Test fun sharedTitleStartingWithALinkIsKept() {
+        assertEquals("https://example.com is down",
+            BookmarkTitles.shared("https://example.com is down", "https://example.com"))
+        assertEquals("https:// other.example/page",
+            BookmarkTitles.shared("https:// other.example/page", "https://example.com/page"))
+    }
+
     @Test fun sharedTitleWithTextIsKeptUnchanged() {
         assertEquals("Read this:\nhttps://example.com",
             BookmarkTitles.shared("Read this:\nhttps://example.com", "https://example.com"))
