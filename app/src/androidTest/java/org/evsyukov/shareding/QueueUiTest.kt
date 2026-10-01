@@ -120,6 +120,10 @@ class QueueUiTest {
         val urlBounds = compose.onNodeWithText(url, useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot
         assertTrue("Expanded title and URL must not overlap", titleBounds.bottom <= urlBounds.top)
+        // Queued bookmarks can be inspected, retried and deleted, but not edited.
+        compose.onNodeWithText("Edit bookmark").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Delete $url").assertIsDisplayed()
+        compose.onNodeWithText("Retry").assertIsDisplayed()
         compose.onNodeWithContentDescription("Hide details for $url").performClick()
         assertTrue(exceeded(title))
     }

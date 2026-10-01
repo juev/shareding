@@ -11,12 +11,7 @@ import org.evsyukov.shareding.ShareDingApplication
 import org.evsyukov.shareding.network.ApiException
 
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result {
-        val container = (applicationContext.applicationContext as ShareDingApplication).container
-        return container.scheduler.withSyncPermit { runSync() } ?: Result.success()
-    }
-
-    private suspend fun runSync(): Result = try {
+    override suspend fun doWork(): Result = try {
         sync()
     } catch (cancel: CancellationException) {
         throw cancel
