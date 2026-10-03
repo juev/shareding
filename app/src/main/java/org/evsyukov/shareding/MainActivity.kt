@@ -196,9 +196,9 @@ private fun ShareDingScreen(container: AppContainer) {
 
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()) { }
-    LaunchedEffect(settings.lastError) {
-        // Ask once, after sync has failed, so the request has an obvious reason.
-        if (settings.lastError.isNotBlank() && container.notifier.shouldRequestPermission()) {
+    LaunchedEffect(Unit) {
+        // Ask once, on first launch: a sync error in the background cannot show the dialog itself.
+        if (container.notifier.shouldRequestPermission()) {
             container.notifier.markPermissionRequested()
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
