@@ -8,4 +8,10 @@ Features:
 * Review and retry queued bookmarks; remove entries with confirmation.
 * Set default tags and bookmark options, with tag suggestions from linkding.
 
+Network connections:
+* ShareDing sends bookmarks to your linkding server.
+* When a queued link comes from a known URL shortener such as t.co, bit.ly, or vk.cc, background sync asks the shortener where the link leads and sends that address to linkding.
+* If you tap Fetch page details in the Add Bookmark form, ShareDing requests the bookmarked page from your device to read its title and description.
+The shortener and page requests do not include your linkding API token.
+
 ShareDing requires Android 9 or newer and your own linkding server. Enter its HTTPS URL and API token in Settings. To reach a server through another route, use a VPN on your device.
