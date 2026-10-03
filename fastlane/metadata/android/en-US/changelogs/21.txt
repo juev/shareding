@@ -1,0 +1,1 @@
+The Mark unread and Archive switches in Settings are now announced by screen readers with the setting name, and a tap anywhere on the row toggles them. On tablets and other wide screens the queue, forms, and settings keep a comfortable width and stay centred instead of stretching across the whole display.
