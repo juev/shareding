@@ -51,6 +51,10 @@ enum class NotificationAccess { ON, REQUEST_PERMISSION, OPEN_SETTINGS;
             !enabled -> OPEN_SETTINGS
             else -> ON
         }
+
+        /** The app asks on its own only once; later requests come from the Settings switch. */
+        fun askOnLaunch(needsPermission: Boolean, granted: Boolean, requestedBefore: Boolean): Boolean =
+            needsPermission && !granted && !requestedBefore
     }
 }
 
@@ -104,9 +108,11 @@ class SyncNotifier(private val context: Context, private val now: () -> Long = S
     fun settingsIntent(): Intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
         .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
 
-    fun shouldRequestPermission(): Boolean =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPermission() &&
-            !prefs.getBoolean(KEY_PERMISSION_REQUESTED, false)
+    fun shouldRequestPermission(): Boolean = NotificationAccess.askOnLaunch(
+        needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
+        granted = hasPermission(),
+        requestedBefore = prefs.getBoolean(KEY_PERMISSION_REQUESTED, false),
+    )
 
     fun markPermissionRequested() {
         prefs.edit().putBoolean(KEY_PERMISSION_REQUESTED, true).apply()
