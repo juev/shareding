@@ -57,7 +57,7 @@ android {
 
     defaultConfig {
         applicationId = "org.evsyukov.shareding"
-        minSdk = 28
+        minSdk = 29
         targetSdk = 36
         versionCode = 22
         versionName = "0.2.4-rc.1"
