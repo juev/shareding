@@ -517,14 +517,12 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
             saving = true
             try {
                 val validUrl = Urls.bookmark(url)
-                val defaults = container.settings.state.value
-                val allTags = TagNames.combine(defaults.defaultTags, tags)
-                TagNames.requireValid(allTags)
+                val ownTags = TagNames.parse(tags).joinToString(", ")
+                TagNames.requireValid(ownTags)
                 val id = withContext(Dispatchers.IO) {
                     container.db.bookmarks().insert(Bookmark(url = validUrl,
                         title = BookmarkTitles.normalize(title), sendTitle = title.isNotBlank(),
-                        description = description.trim(), tags = allTags,
-                        unread = defaults.unread, archived = defaults.archived,
+                        description = description.trim(), tags = ownTags,
                         metadataFetched = title.isNotBlank()))
                 }
                 val blocked = if (id != -1L) container.linkSaved() else null

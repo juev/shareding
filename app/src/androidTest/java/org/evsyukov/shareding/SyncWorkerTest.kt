@@ -228,6 +228,71 @@ class SyncWorkerTest {
         }
     }
 
+    @Test fun linkSavedBeforeServerSetupIsSentWithCurrentDefaults() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val tls = AndroidTestTls(InstrumentationRegistry.getInstrumentation().context)
+        val app = context.applicationContext as ShareDingApplication
+        WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
+        val dao = app.container.db.bookmarks()
+        withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+        MockWebServer().apply { tls.start(this) }.use { server ->
+            try {
+                app.container.settings.save("", null, "old", true, false)
+                dao.insert(Bookmark(url = "https://example.com/before-setup"))
+                dao.insert(Bookmark(url = "https://example.com/from-form", tags = "work, reading"))
+                app.container.settings.save(tls.url(server), "test-token", "reading", false, true)
+                server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+                server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+                TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+                assertEquals(0, dao.count())
+                server.takeRequest()
+                val shared = com.google.gson.JsonParser.parseString(server.takeRequest().body.readUtf8()).asJsonObject
+                assertEquals(listOf("reading"), shared.getAsJsonArray("tag_names").map { it.asString })
+                assertEquals(false, shared.get("unread").asBoolean)
+                assertEquals(true, shared.get("is_archived").asBoolean)
+                val form = com.google.gson.JsonParser.parseString(server.takeRequest().body.readUtf8()).asJsonObject
+                assertEquals(listOf("reading", "work"), form.getAsJsonArray("tag_names").map { it.asString })
+            } finally {
+                app.container.settings.save("", null, "", true, false)
+            }
+        }
+    }
+
+    @Test fun linkStuckOnRejectedTokenIsSentWithDefaultsChangedMeanwhile() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val tls = AndroidTestTls(InstrumentationRegistry.getInstrumentation().context)
+        val app = context.applicationContext as ShareDingApplication
+        WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
+        val dao = app.container.db.bookmarks()
+        withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+        MockWebServer().apply { tls.start(this) }.use { server ->
+            try {
+                app.container.settings.save(tls.url(server), "revoked", "old", true, false)
+                dao.insert(Bookmark(url = "https://example.com/stuck"))
+                server.enqueue(MockResponse().setResponseCode(401).setBody("Invalid token."))
+                TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+                assertEquals(1, dao.count())
+
+                app.container.settings.save(tls.url(server), "fixed", "reading, later", false, true)
+                server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+                TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+                assertEquals(0, dao.count())
+                server.takeRequest()
+                server.takeRequest()
+                val post = server.takeRequest()
+                assertEquals("Token fixed", post.getHeader("Authorization"))
+                val body = com.google.gson.JsonParser.parseString(post.body.readUtf8()).asJsonObject
+                assertEquals(listOf("reading", "later"), body.getAsJsonArray("tag_names").map { it.asString })
+                assertEquals(false, body.get("unread").asBoolean)
+                assertEquals(true, body.get("is_archived").asBoolean)
+            } finally {
+                app.container.settings.save("", null, "", true, false)
+            }
+        }
+    }
+
     @Test fun rejectedTokenStopsSyncUntilTheUserResumes() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val tls = AndroidTestTls(InstrumentationRegistry.getInstrumentation().context)
