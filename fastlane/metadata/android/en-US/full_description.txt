@@ -14,4 +14,4 @@ Network connections:
 * If you tap Fetch page details in the Add Bookmark form, ShareDing requests the bookmarked page from your device to read its title and description.
 The shortener and page requests do not include your linkding API token.
 
-ShareDing requires Android 9 or newer and your own linkding server. Enter its HTTPS URL and API token in Settings. To reach a server through another route, use a VPN on your device.
+ShareDing requires Android 10 or newer and your own linkding server. Enter its HTTPS URL and API token in Settings. To reach a server through another route, use a VPN on your device.
