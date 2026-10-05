@@ -38,6 +38,11 @@ class ShareDingApplication : Application() {
                 Log.e("ShareDing", "Could not schedule periodic recovery", error)
             }
             try {
+                DirectShare.publish(this@ShareDingApplication)
+            } catch (error: Exception) {
+                Log.e("ShareDing", "Could not publish the Direct Share target", error)
+            }
+            try {
                 container.recoverQueuedSync()
             } catch (cancel: CancellationException) {
                 throw cancel

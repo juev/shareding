@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.WorkManager
@@ -31,6 +32,19 @@ class ShareIntentTest {
             Thread.sleep(50)
         }
         return null
+    }
+
+    @Test fun appStartPublishesDirectShareTarget() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        var categories = emptyList<Set<String>>()
+        repeat(40) {
+            categories = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_DYNAMIC)
+                .mapNotNull { it.categories }
+            if (categories.isNotEmpty()) return@repeat
+            Thread.sleep(50)
+        }
+        // The category ties the shortcut to the share-target declared in res/xml/shortcuts.xml.
+        assertEquals(listOf(setOf(DirectShare.CATEGORY)), categories)
     }
 
     @Test fun shareWhileSyncCannotRunSavesTheLinkAndNotifiesWithoutSchedulingWork() = runBlocking {
