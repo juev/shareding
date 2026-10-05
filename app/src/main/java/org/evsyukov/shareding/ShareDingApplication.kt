@@ -78,14 +78,8 @@ class AppContainer(application: Application) {
 
     /** After a link is saved: schedules sync, or tells the user why the link will not be sent. */
     suspend fun linkSaved(): SyncProblem? {
-        val current = settings.state.value
-        val blocked = SyncProblem.blocking(current)
-        if (blocked == null) {
-            scheduler.requestSync()
-        } else {
-            notifier.remind(blocked, if (blocked == SyncProblem.NOT_CONFIGURED)
-                SyncProblem.NOT_CONFIGURED_DETAIL else current.lastError)
-        }
+        val blocked = SyncProblem.blocking(settings.state.value)
+        if (blocked == null) scheduler.requestSync() else notifier.remind(blocked)
         return blocked
     }
 

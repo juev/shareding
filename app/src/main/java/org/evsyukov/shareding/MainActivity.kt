@@ -615,6 +615,8 @@ internal fun TagInput(value: String, onValueChange: (String) -> Unit, label: Str
     }
 }
 
+private const val CONNECTION_OK = "Connection successful"
+
 @Composable
 private fun SettingsScreen(settings: Settings, padding: PaddingValues,
                            availableTags: List<String>, tagLoadError: Boolean,
@@ -685,7 +687,7 @@ private fun SettingsScreen(settings: Settings, padding: PaddingValues,
                             }
                             if (testVersion == version) {
                                 testFailed = result.isFailure
-                                testStatus = if (result.isSuccess) "Connection successful"
+                                testStatus = if (result.isSuccess) CONNECTION_OK
                                     else "Connection failed: ${result.exceptionOrNull()?.message ?: "Unknown error"}"
                                 testing = false
                             }
@@ -696,6 +698,12 @@ private fun SettingsScreen(settings: Settings, padding: PaddingValues,
                     Text(it, color = if (testFailed) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.bodyMedium)
+                }
+                // The test used the values typed here; sync keeps using the saved ones until Save.
+                if (testStatus == CONNECTION_OK && !savedConnectionIsCurrent) {
+                    Text("Save settings to sync with this connection.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

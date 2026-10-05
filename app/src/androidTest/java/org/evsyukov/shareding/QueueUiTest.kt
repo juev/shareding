@@ -354,6 +354,42 @@ class QueueUiTest {
         compose.onNodeWithText("Sync problem alerts").assertDoesNotExist()
     }
 
+    @Test fun testedButUnsavedTokenAsksToSaveSettings() {
+        val tls = AndroidTestTls(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context)
+        MockWebServer().apply { tls.start(this) }.use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) =
+                    if (request.getHeader("Authorization") == "Token restored") MockResponse().setBody("{}")
+                    else MockResponse().setResponseCode(401).setBody("""{"detail":"Invalid token."}""")
+            }
+            val app = compose.activity.application as ShareDingApplication
+            app.container.settings.save(tls.url(server), "revoked", "", true, false)
+            val reminder = "Save settings to sync with this connection."
+            compose.onNodeWithText("Settings").performClick()
+            compose.onNodeWithText("Test Connection").performClick()
+            compose.waitUntil(5_000) {
+                compose.onAllNodes(hasText("Connection failed: linkding rejected the API token (HTTP 401)\nInvalid token."))
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText(reminder).assertDoesNotExist()
+
+            // Test Connection checks the typed token; sync would still use the saved one.
+            compose.onNodeWithText("API token (leave empty to keep current)").performTextInput("restored")
+            compose.onNodeWithText("Test Connection").performClick()
+            compose.waitUntil(5_000) {
+                compose.onAllNodes(hasText("Connection successful")).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText(reminder).assertIsDisplayed()
+            assertEquals("revoked", app.container.settings.token())
+
+            compose.onNodeWithText("Save settings").performSemanticsAction(SemanticsActions.OnClick)
+            compose.waitUntil(5_000) { app.container.settings.token() == "restored" }
+            compose.waitUntil(5_000) {
+                compose.onAllNodes(hasText(reminder)).fetchSemanticsNodes().isEmpty()
+            }
+        }
+    }
+
     @Test fun connectionFailureRemainsVisibleInSettings() {
         compose.onNodeWithText("Settings").performClick()
         compose.onNodeWithText("Server URL").performTextClearance()

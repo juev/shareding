@@ -87,8 +87,7 @@ class LinkdingApiTest {
                 fail("HTTP error must fail")
             } catch (error: ApiException) {
                 assertEquals(503, error.code)
-                assertTrue(error.message.orEmpty().contains("linkding returned HTTP 503"))
-                assertTrue(error.message.orEmpty().contains("""{"detail":"temporarily unavailable"}"""))
+                assertEquals("linkding returned HTTP 503\ntemporarily unavailable", error.message)
             }
         }
     }

@@ -2,6 +2,7 @@ package org.evsyukov.shareding.network
 
 import android.net.Network
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.net.URI
@@ -86,6 +87,40 @@ object TagNames {
 
 class ApiException(val code: Int, message: String) : Exception(message)
 
+/** Turns an HTTP error from linkding into text a person can read. */
+object ApiErrors {
+    fun message(code: Int, body: String): String {
+        val reason = when (code) {
+            401, 403 -> "linkding rejected the API token (HTTP $code)"
+            404 -> "linkding API not found (HTTP 404)"
+            else -> "linkding returned HTTP $code"
+        }
+        val detail = readable(body.trim())
+        return if (detail.isEmpty()) reason else "$reason\n$detail"
+    }
+
+    /** A JSON body becomes plain lines; anything else is kept as the server sent it. */
+    private fun readable(body: String): String {
+        if (!body.startsWith("{") && !body.startsWith("[")) return body
+        val json = runCatching { JsonParser.parseString(body) }.getOrNull() ?: return body
+        val lines = when {
+            json.isJsonObject -> json.asJsonObject.entrySet().map { (name, value) ->
+                // linkding puts a general message under these names; other names are form fields.
+                if (name == "detail" || name == "non_field_errors") text(value) else "$name: ${text(value)}"
+            }
+            json.isJsonArray -> json.asJsonArray.map(::text)
+            else -> return body
+        }
+        return lines.filter { it.isNotBlank() }.joinToString("\n").ifEmpty { body }
+    }
+
+    private fun text(value: JsonElement): String = when {
+        value.isJsonPrimitive -> value.asString
+        value.isJsonArray -> value.asJsonArray.joinToString(" ", transform = ::text)
+        else -> value.toString()
+    }
+}
+
 class LinkdingApi(
     private val clientFactory: (Network?, Long, Long) -> OkHttpClient = HttpClients::create,
 ) {
@@ -148,9 +183,7 @@ class LinkdingApi(
         return clientFactory(network, 10, 15).newCall(request).executeCancellable { response ->
             val code = response.code
             if (code !in 200..299) {
-                val reason = "linkding returned HTTP $code"
-                val detail = response.body?.string().orEmpty().trim()
-                throw ApiException(code, if (detail.isEmpty()) reason else "$reason\n$detail")
+                throw ApiException(code, ApiErrors.message(code, response.body?.string().orEmpty()))
             }
             if (readBody) response.body?.string() else null
         }
