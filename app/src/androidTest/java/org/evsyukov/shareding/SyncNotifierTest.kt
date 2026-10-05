@@ -54,7 +54,7 @@ class SyncNotifierTest {
 
     @Test fun problemIsShownOncePerKindAndClearedOnSuccess() {
         val notifier = SyncNotifier(context) { now }
-        notifier.problem(SyncProblem.AUTH, "linkding returned HTTP 401")
+        notifier.problem(SyncProblem.AUTH)
         val first = active(SyncNotifier.PROBLEM_ID)
         assertNotNull(first)
         assertEquals(SyncProblem.AUTH.title, first!!.notification.extras.getString("android.title"))
@@ -62,31 +62,31 @@ class SyncNotifierTest {
 
         manager.cancel(SyncNotifier.PROBLEM_ID)
         waitGone(SyncNotifier.PROBLEM_ID)
-        notifier.problem(SyncProblem.AUTH, "linkding returned HTTP 401")
+        notifier.problem(SyncProblem.AUTH)
         Thread.sleep(300)
         assertNull("Same problem must not be shown again", manager.activeNotifications
             .firstOrNull { it.id == SyncNotifier.PROBLEM_ID })
 
-        notifier.problem(SyncProblem.NOT_FOUND, "linkding returned HTTP 404")
+        notifier.problem(SyncProblem.NOT_FOUND)
         assertEquals(SyncProblem.NOT_FOUND.title,
             active(SyncNotifier.PROBLEM_ID)!!.notification.extras.getString("android.title"))
 
         notifier.resolved()
         waitGone(SyncNotifier.PROBLEM_ID)
         assertNull(manager.activeNotifications.firstOrNull { it.id == SyncNotifier.PROBLEM_ID })
-        notifier.problem(SyncProblem.NOT_FOUND, "again")
+        notifier.problem(SyncProblem.NOT_FOUND)
         assertNotNull("A resolved problem may be shown again", active(SyncNotifier.PROBLEM_ID))
     }
 
     @Test fun reminderReturnsAfterTheUserDismissedIt() {
         val notifier = SyncNotifier(context) { now }
-        notifier.remind(SyncProblem.NOT_CONFIGURED, SyncProblem.NOT_CONFIGURED_DETAIL)
+        notifier.remind(SyncProblem.NOT_CONFIGURED)
         assertEquals(SyncProblem.NOT_CONFIGURED.title,
             active(SyncNotifier.PROBLEM_ID)?.notification?.extras?.getString("android.title"))
         manager.cancel(SyncNotifier.PROBLEM_ID)
         waitGone(SyncNotifier.PROBLEM_ID)
 
-        notifier.remind(SyncProblem.NOT_CONFIGURED, SyncProblem.NOT_CONFIGURED_DETAIL)
+        notifier.remind(SyncProblem.NOT_CONFIGURED)
         assertNotNull("Every save while sync cannot run reminds again", active(SyncNotifier.PROBLEM_ID))
     }
 
@@ -122,10 +122,15 @@ class SyncNotifierTest {
             try {
                 app.container.settings.save(tls.url(server), "revoked", "", true, false)
                 dao.insert(Bookmark(url = "https://example.com/notify"))
-                server.enqueue(MockResponse().setResponseCode(401).setBody("Invalid token."))
+                server.enqueue(MockResponse().setResponseCode(401).setBody("""{"detail":"Invalid token."}"""))
                 TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
-                assertEquals(SyncProblem.AUTH.title,
-                    active(SyncNotifier.PROBLEM_ID)?.notification?.extras?.getString("android.title"))
+                val shown = active(SyncNotifier.PROBLEM_ID)?.notification?.extras
+                assertEquals(SyncProblem.AUTH.title, shown?.getString("android.title"))
+                // The text tells the user what to do; the server response stays on the queue card.
+                assertEquals("Saved links stay in the queue. Check the API token in Settings.",
+                    shown?.getCharSequence("android.text")?.toString())
+                assertEquals("linkding rejected the API token (HTTP 401)\nInvalid token.",
+                    dao.findByUrl("https://example.com/notify")?.lastError)
 
                 // A rejected token stops sync; the next attempt needs Sync now, Retry, or new settings.
                 app.container.settings.resumeSync()

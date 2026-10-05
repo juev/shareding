@@ -104,7 +104,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                              notify: Boolean = true): Result {
         container.settings.stopSync(problem.name, message)
         if (notify) {
-            container.notifier.problem(problem, message)
+            container.notifier.problem(problem)
             container.notifier.checkStale(container.db.bookmarks().oldestCreatedAt())
         }
         container.updateRecovery()

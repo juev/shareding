@@ -49,7 +49,7 @@ Settings also lets you set default tags and choose whether bookmarks are marked 
 
 ShareDing connects to linkding and bookmarked pages directly. It has no proxy setting; if your server is reachable only through another route, use a VPN on your device. Versions before 0.2.1 had an optional HTTP proxy. It was removed because proxy credentials were sent without TLS, and updating deletes any saved proxy settings.
 
-Settings shows an inline Test Connection result. The API token is encrypted using a key held in Android Keystore. The [privacy policy](docs/privacy.md) explains how the app handles bookmarks and the token.
+Settings shows an inline Test Connection result. The test uses the values typed in the fields and does not save them; tap **Save settings** to sync with a connection you have just tested. The API token is encrypted using a key held in Android Keystore. The [privacy policy](docs/privacy.md) explains how the app handles bookmarks and the token.
 
 ShareDing is written in Kotlin. Jetpack Compose provides the interface, Room stores the queue, and WorkManager handles background sync.
 

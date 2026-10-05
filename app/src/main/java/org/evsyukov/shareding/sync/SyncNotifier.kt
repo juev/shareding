@@ -21,17 +21,17 @@ import org.evsyukov.shareding.network.Urls
  * Reasons saved links cannot be sent: errors that another retry cannot fix without a change in
  * settings or on the server, and a server that has not been set up yet.
  */
-enum class SyncProblem(val title: String) {
-    AUTH("linkding rejected the API token"),
-    NOT_FOUND("linkding API not found"),
-    HTTPS("linkding server URL must use HTTPS"),
-    TOKEN("Cannot read the API token"),
-    NOT_CONFIGURED("linkding is not set up");
+enum class SyncProblem(val title: String, private val fix: String) {
+    AUTH("linkding rejected the API token", "Check the API token in Settings."),
+    NOT_FOUND("linkding API not found", "Check the server URL in Settings."),
+    HTTPS("linkding server URL must use HTTPS", "Change the server URL in Settings."),
+    TOKEN("Cannot read the API token", "Enter the API token again in Settings."),
+    NOT_CONFIGURED("linkding is not set up", "Add the server URL and API token in Settings.");
+
+    /** Notification text: what happens to saved links and what the user can do. */
+    val detail: String get() = "Saved links stay in the queue. $fix"
 
     companion object {
-        const val NOT_CONFIGURED_DETAIL =
-            "Saved links stay in the queue. Add the server URL and API token in Settings."
-
         /** Why saved links cannot be sent right now, or null while sync can run. */
         fun blocking(settings: AppSettings): SyncProblem? = when {
             !settings.configured -> NOT_CONFIGURED
@@ -71,14 +71,14 @@ class SyncNotifier(private val context: Context, private val now: () -> Long = S
     private val prefs = context.getSharedPreferences("notifications", Context.MODE_PRIVATE)
     private val manager = NotificationManagerCompat.from(context)
 
-    fun problem(problem: SyncProblem, detail: String) {
+    fun problem(problem: SyncProblem) {
         if (prefs.getString(KEY_PROBLEM, null) == problem.name) return
-        if (post(PROBLEM_ID, problem.title, detail)) prefs.edit().putString(KEY_PROBLEM, problem.name).apply()
+        if (post(PROBLEM_ID, problem.title, problem.detail)) prefs.edit().putString(KEY_PROBLEM, problem.name).apply()
     }
 
     /** Shown on every save while sync cannot run, even after the user dismissed it. */
-    fun remind(problem: SyncProblem, detail: String) {
-        if (post(PROBLEM_ID, problem.title, detail)) prefs.edit().putString(KEY_PROBLEM, problem.name).apply()
+    fun remind(problem: SyncProblem) {
+        if (post(PROBLEM_ID, problem.title, problem.detail)) prefs.edit().putString(KEY_PROBLEM, problem.name).apply()
     }
 
     fun resolved() {
