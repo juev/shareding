@@ -347,12 +347,11 @@ class QueueUiTest {
         assertTrue(app.container.settings.state.value.unread)
     }
 
-    @Test fun settingsShowGrantedNotificationAlertsAsOn() {
+    @Test fun settingsHaveNoNotificationRow() {
         compose.onNodeWithText("Settings").performClick()
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Privacy policy"))
-        compose.onNodeWithText("Sync problem alerts").assertIsDisplayed()
-        compose.onNodeWithText("On").assertIsDisplayed()
-        compose.onNodeWithText("Turn on").assertDoesNotExist()
+        compose.onNodeWithText("Notifications").assertDoesNotExist()
+        compose.onNodeWithText("Sync problem alerts").assertDoesNotExist()
     }
 
     @Test fun connectionFailureRemainsVisibleInSettings() {
