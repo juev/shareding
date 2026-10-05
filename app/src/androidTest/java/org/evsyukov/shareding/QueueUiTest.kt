@@ -190,6 +190,13 @@ class QueueUiTest {
         }
     }
 
+    @Test fun queueStatusNamesTheProblemThatStoppedSync() {
+        val app = compose.activity.application as ShareDingApplication
+        app.container.settings.save("https://127.0.0.1:1/", "revoked", "", true, false)
+        app.container.settings.stopSync("AUTH", "linkding returned HTTP 401")
+        compose.onNodeWithText("Sync stopped · linkding rejected the API token").assertIsDisplayed()
+    }
+
     @Test fun httpServerShowsHttpsRequirement() {
         val app = compose.activity.application as ShareDingApplication
         app.container.settings.save("http://example.com", null, "", true, false)

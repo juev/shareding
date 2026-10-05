@@ -113,6 +113,7 @@ import org.evsyukov.shareding.network.BookmarkTitles
 import org.evsyukov.shareding.network.Urls
 import org.evsyukov.shareding.sync.NotificationAccess
 import org.evsyukov.shareding.sync.SyncNotifier
+import org.evsyukov.shareding.sync.SyncProblem
 
 class MainActivity : ComponentActivity() {
     private val container get() = (application as ShareDingApplication).container
@@ -294,9 +295,11 @@ private fun ShareDingScreen(container: AppContainer) {
 @Composable
 private fun QueueSyncStatus(settings: Settings, workInfos: List<WorkInfo>, queueCount: Int) {
     val active = workInfos.filter { !it.state.isFinished }
+    val blocked = SyncProblem.blocking(settings)
     val status = when {
         active.any { it.state == WorkInfo.State.RUNNING } -> "Syncing…"
-        queueCount > 0 && !settings.configured -> "Set up linkding in Settings to sync"
+        blocked == SyncProblem.NOT_CONFIGURED && queueCount > 0 -> "Set up linkding in Settings to sync"
+        blocked != null && blocked != SyncProblem.NOT_CONFIGURED -> "Sync stopped · ${blocked.title}"
         queueCount > 0 && active.isNotEmpty() -> "Waiting for network or retry"
         else -> "Ready to sync"
     }
@@ -524,9 +527,9 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
                         unread = defaults.unread, archived = defaults.archived,
                         metadataFetched = title.isNotBlank()))
                 }
-                if (id != -1L) container.scheduler.requestSync()
+                val blocked = if (id != -1L) container.linkSaved() else null
                 withContext(Dispatchers.Main.immediate) {
-                    Toast.makeText(context, if (id == -1L) "Already in queue" else "Saved to queue",
+                    Toast.makeText(context, SyncProblem.savedMessage(id != -1L, blocked),
                         Toast.LENGTH_SHORT).show()
                     onDismiss()
                 }
