@@ -267,6 +267,8 @@ private fun ShareDingScreen(container: AppContainer) {
         else SettingsScreen(settings, container.notifier, padding, serverTags, tagLoadError,
             onSave = { server, token, tags, unread, archived ->
                 if (server.isNotBlank()) Urls.server(server)
+                // Default tags now reach linkding without passing through the Add Bookmark check.
+                TagNames.requireValid(tags)
                 withContext(Dispatchers.IO) {
                     container.settings.save(server.trim(), token, tags.trim(), unread, archived)
                 }
