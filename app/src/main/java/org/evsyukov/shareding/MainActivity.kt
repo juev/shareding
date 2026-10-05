@@ -231,7 +231,7 @@ private fun ShareDingScreen(container: AppContainer) {
         topBar = {
             TopAppBar(title = { Text(if (selectedTab == 0) "Queue" else "Settings") }, actions = {
                 if (selectedTab == 0) IconButton(onClick = {
-                    runQueueAction { container.scheduler.restartSync() }
+                    runQueueAction { container.resumeSync() }
                 }, enabled = !scheduling) {
                     Icon(Icons.Default.Refresh, contentDescription = "Sync now")
                 }
@@ -258,7 +258,7 @@ private fun ShareDingScreen(container: AppContainer) {
             onRetry = { bookmark ->
                 runQueueAction {
                     withContext(Dispatchers.IO) { container.db.bookmarks().markPending(bookmark.id) }
-                    container.scheduler.restartSync()
+                    container.resumeSync()
                 }
             },
             onDelete = { deleteTarget = it })
@@ -269,6 +269,8 @@ private fun ShareDingScreen(container: AppContainer) {
                 withContext(Dispatchers.IO) {
                     container.settings.save(server.trim(), token, tags.trim(), unread, archived)
                 }
+                // The worker reports again if the saved connection still does not work.
+                container.notifier.resolved()
                 container.updateRecovery()
                 container.scheduler.restartSync()
             },

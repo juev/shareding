@@ -8,7 +8,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.evsyukov.shareding.ShareDingApplication
-import org.evsyukov.shareding.network.ApiException
+import org.evsyukov.shareding.AppContainer
 
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = try {
@@ -32,10 +32,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             throw cancel
         } catch (error: Exception) {
             Log.e("ShareDing", "Cannot read API token", error)
-            val message = "Cannot read API token: ${error.message}"
-            runCatching { container.settings.recordError(message) }
-            container.notifier.problem(SyncProblem.TOKEN, message)
-            return Result.success()
+            return stop(container, SyncProblem.TOKEN, "Cannot read API token: ${error.message}")
         } ?: return Result.success()
         // An empty queue still checks the server, so "Sync now" reports a fresh result.
         val selectedNetwork = try {
@@ -44,14 +41,12 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             throw cancel
         } catch (error: Exception) {
             val message = error.message ?: "Cannot reach linkding"
-            if (dao.count() == 0) {
-                // Nothing is waiting, so there is nothing to retry or notify about.
-                runCatching { container.settings.recordError(message) }
-                return Result.success()
-            }
-            dao.batch(50).forEach { dao.markFailed(it.id, message) }
+            val queued = dao.count() > 0
+            if (queued) dao.batch(50).forEach { dao.markFailed(it.id, message) }
+            SyncProblem.of(error)?.let { return stop(container, it, message, notify = queued) }
             runCatching { container.settings.recordError(message) }
-            SyncProblem.of(error)?.let { container.notifier.problem(it, message) }
+            // Nothing is waiting, so there is nothing to retry or notify about.
+            if (!queued) return Result.success()
             container.notifier.checkStale(dao.oldestCreatedAt())
             return Result.retry()
         }
@@ -86,10 +81,9 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                 } catch (error: Exception) {
                     val message = error.message ?: "Cannot send bookmark"
                     dao.markFailed(bookmark.id, message)
+                    SyncProblem.of(error)?.let { return stop(container, it, message) }
                     runCatching { container.settings.recordError(message) }
-                    SyncProblem.of(error)?.let { container.notifier.problem(it, message) }
                     failed = true
-                    if (error is ApiException && error.code == 401) break
                 }
             }
             if (failed) {
@@ -98,5 +92,20 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             }
         }
         return Result.retry()
+    }
+
+    /**
+     * Ends the run after a problem that retrying cannot fix. Sync stays off, with no scheduled work,
+     * until the user saves settings, taps Sync now, or retries a link.
+     */
+    private suspend fun stop(container: AppContainer, problem: SyncProblem, message: String,
+                             notify: Boolean = true): Result {
+        container.settings.stopSync(problem.name, message)
+        if (notify) {
+            container.notifier.problem(problem, message)
+            container.notifier.checkStale(container.db.bookmarks().oldestCreatedAt())
+        }
+        container.updateRecovery()
+        return Result.success()
     }
 }

@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.AppDatabase
 import org.evsyukov.shareding.data.SettingsStore
 import org.evsyukov.shareding.network.LinkdingApi
@@ -67,6 +68,13 @@ class AppContainer(application: Application) {
     /** Keeps the periodic recovery check only while sync can run. */
     suspend fun updateRecovery() {
         if (settings.state.value.canSync) scheduler.ensureRecoveryScheduled() else scheduler.cancelRecovery()
+    }
+
+    /** Sync now and Retry ask for another attempt, so a stopped sync starts again. */
+    suspend fun resumeSync() {
+        withContext(Dispatchers.IO) { settings.resumeSync() }
+        updateRecovery()
+        scheduler.restartSync()
     }
 
     suspend fun recoverQueuedSync() {

@@ -70,6 +70,8 @@ class QueueUiTest {
     @Test fun deletingBookmarkRequiresConfirmation() {
         val app = compose.activity.application as ShareDingApplication
         val url = "https://example.com/delete-${System.nanoTime()}"
+        // Deletion restarts sync only while a server is set up; this one refuses connections.
+        app.container.settings.save("https://127.0.0.1:1/", "test-token", "", true, false)
         runBlocking {
             withContext(Dispatchers.IO) {
                 app.container.db.clearAllTables()
@@ -161,6 +163,30 @@ class QueueUiTest {
             assertEquals(2, server.requestCount)
             compose.onNodeWithText("Settings").performClick()
             compose.onNodeWithText("Sync Now").assertDoesNotExist()
+        }
+    }
+
+    @Test fun syncNowResumesSyncStoppedByRejectedToken() {
+        val tls = AndroidTestTls(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context)
+        MockWebServer().apply { tls.start(this) }.use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = MockResponse().setResponseCode(
+                    if (request.method == "POST") 201 else 200).setBody("{}")
+            }
+            val app = compose.activity.application as ShareDingApplication
+            runBlocking {
+                withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+                app.container.db.bookmarks().insert(Bookmark(url = "https://example.com/resumed"))
+            }
+            app.container.settings.save(tls.url(server), "secret", "", true, false)
+            app.container.settings.stopSync("AUTH", "linkding returned HTTP 401")
+            runBlocking { app.container.scheduler.requestSync() }
+            assertTrue(WorkManager.getInstance(compose.activity)
+                .getWorkInfosForUniqueWork("linkding-sync").get().none { !it.state.isFinished })
+
+            compose.onNodeWithContentDescription("Sync now").performClick()
+            compose.waitUntil(10_000) { runBlocking { app.container.db.bookmarks().count() == 0 } }
+            assertEquals("", app.container.settings.state.value.syncStopped)
         }
     }
 
