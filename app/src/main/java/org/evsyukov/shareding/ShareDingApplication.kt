@@ -29,7 +29,7 @@ class ShareDingApplication : Application() {
         container = AppContainer(this)
         startupScope.launch {
             try {
-                container.scheduler.ensureRecoveryScheduled()
+                container.updateRecovery()
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Exception) {
@@ -56,7 +56,7 @@ class AppContainer(application: Application) {
     internal var shortLinks = ShortLinkResolver()
     val networkTracker = NetworkTracker(application)
     val networkSelector = NetworkSelector(networkTracker, api, pageFetcher)
-    val scheduler = SyncScheduler(application)
+    val scheduler = SyncScheduler(application) { settings.state.value.canSync }
     val notifier = SyncNotifier(application)
 
     suspend fun deleteQueuedBookmark(id: Long) {
@@ -64,13 +64,17 @@ class AppContainer(application: Application) {
         scheduler.restartSync()
     }
 
+    /** Keeps the periodic recovery check only while sync can run. */
+    suspend fun updateRecovery() {
+        if (settings.state.value.canSync) scheduler.ensureRecoveryScheduled() else scheduler.cancelRecovery()
+    }
+
     suspend fun recoverQueuedSync() {
         if (db.bookmarks().count() == 0) {
             notifier.checkStale(null)
             return
         }
-        val configured = settings.state.value
-        if (configured.serverUrl.isBlank() || !configured.hasToken) return
+        if (!settings.state.value.canSync) return
         notifier.checkStale(db.bookmarks().oldestCreatedAt())
         scheduler.ensureScheduled()
     }

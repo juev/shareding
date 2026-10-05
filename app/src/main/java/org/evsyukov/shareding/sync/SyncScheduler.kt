@@ -20,7 +20,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
-class SyncScheduler(context: Context) {
+/** Schedules nothing while [canSync] is false: no server is set up, or a persistent error stopped sync. */
+class SyncScheduler(context: Context, private val canSync: () -> Boolean = { true }) {
     private val workManager = WorkManager.getInstance(context)
     private val scheduling = Mutex()
 
@@ -28,14 +29,21 @@ class SyncScheduler(context: Context) {
 
     suspend fun restartSync() = scheduling.withLock {
         withContext(Dispatchers.IO) {
-            workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.REPLACE, newRequest())
-                .result.get()
+            if (canSync()) {
+                workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.REPLACE, newRequest())
+                    .result.get()
+            } else {
+                workManager.cancelUniqueWork("linkding-sync").result.get()
+            }
         }
     }
 
-    suspend fun ensureScheduled() = withContext(Dispatchers.IO) {
-        workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.KEEP, newRequest())
-            .result.get()
+    suspend fun ensureScheduled() {
+        if (!canSync()) return
+        withContext(Dispatchers.IO) {
+            workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.KEEP, newRequest())
+                .result.get()
+        }
     }
 
     suspend fun ensureRecoveryScheduled() = withContext(Dispatchers.IO) {
@@ -43,7 +51,12 @@ class SyncScheduler(context: Context) {
             newRecoveryRequest()).result.get()
     }
 
+    suspend fun cancelRecovery() = withContext(Dispatchers.IO) {
+        workManager.cancelUniqueWork("linkding-sync-recovery").result.get()
+    }
+
     suspend fun requestSync() {
+        if (!canSync()) return
         try {
             scheduling.withLock {
                 withContext(Dispatchers.IO) {

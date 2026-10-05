@@ -207,7 +207,7 @@ private fun ShareDingScreen(container: AppContainer) {
     LaunchedEffect(settings.serverUrl, settings.hasToken, selectedTab, showAdd, tagRefresh) {
         serverTags = emptyList()
         tagLoadError = false
-        if ((!showAdd && selectedTab != 1) || settings.serverUrl.isBlank() || !settings.hasToken) {
+        if ((!showAdd && selectedTab != 1) || !settings.configured) {
             return@LaunchedEffect
         }
         try {
@@ -222,7 +222,7 @@ private fun ShareDingScreen(container: AppContainer) {
 
     if (showAdd) {
         AddBookmarkScreen(container, serverTags, tagLoadError,
-            canRefreshTags = settings.hasToken && settings.serverUrl.isNotBlank(),
+            canRefreshTags = settings.configured,
             onRefreshTags = { tagRefresh++ }, onDismiss = { showAdd = false })
         return
     }
@@ -269,6 +269,7 @@ private fun ShareDingScreen(container: AppContainer) {
                 withContext(Dispatchers.IO) {
                     container.settings.save(server.trim(), token, tags.trim(), unread, archived)
                 }
+                container.updateRecovery()
                 container.scheduler.restartSync()
             },
             onTest = { server, token ->
@@ -293,7 +294,7 @@ private fun QueueSyncStatus(settings: Settings, workInfos: List<WorkInfo>, queue
     val active = workInfos.filter { !it.state.isFinished }
     val status = when {
         active.any { it.state == WorkInfo.State.RUNNING } -> "Syncing…"
-        queueCount > 0 && (settings.serverUrl.isBlank() || !settings.hasToken) -> "Set up linkding in Settings to sync"
+        queueCount > 0 && !settings.configured -> "Set up linkding in Settings to sync"
         queueCount > 0 && active.isNotEmpty() -> "Waiting for network or retry"
         else -> "Ready to sync"
     }
@@ -739,8 +740,7 @@ private fun SettingsScreen(settings: Settings, notifier: SyncNotifier, padding: 
                     if (savedConnectionIsCurrent) availableTags else emptyList(),
                     "Comma-separated: reading, work notes. Added to new bookmarks.",
                     tagLoadError && savedConnectionIsCurrent,
-                    canRefresh = settings.hasToken && settings.serverUrl.isNotBlank() &&
-                        savedConnectionIsCurrent, onRefreshTags = onRefreshTags)
+                    canRefresh = settings.configured && savedConnectionIsCurrent, onRefreshTags = onRefreshTags)
                 SwitchRow("Mark unread", unread) { unread = it; saveStatus = null }
                 SwitchRow("Archive", archived) { archived = it; saveStatus = null }
             }
