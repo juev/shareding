@@ -23,7 +23,14 @@ data class Settings(
     val lastSyncAttempt: Long = 0,
     val lastError: String = "",
     val hasToken: Boolean = false,
-)
+    /** Name of the persistent sync problem that stopped sync, or empty while sync may run. */
+    val syncStopped: String = "",
+) {
+    val configured: Boolean get() = serverUrl.isNotBlank() && hasToken
+
+    /** Sync needs a server and must not be stopped; otherwise no work is scheduled at all. */
+    val canSync: Boolean get() = configured && syncStopped.isEmpty()
+}
 
 class SettingsStore(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -46,6 +53,7 @@ class SettingsStore(context: Context) {
         lastSyncAttempt = prefs.getLong("last_sync_attempt", prefs.getLong("last_sync", 0)),
         lastError = prefs.getString("last_error", "") ?: "",
         hasToken = secrets.contains("token"),
+        syncStopped = prefs.getString("sync_stopped", "") ?: "",
     )
 
     // Proxy support was removed; drop settings and the password saved by older versions.
@@ -67,6 +75,7 @@ class SettingsStore(context: Context) {
         }
         val editor = prefs.edit().putString("server_url", serverUrl)
             .putString("tags", tags).putBoolean("unread", unread).putBoolean("archived", archived)
+            .remove("sync_stopped")
         check(editor.commit()) { "Cannot save settings" }
         mutable.value = read()
     }
@@ -76,7 +85,19 @@ class SettingsStore(context: Context) {
     fun recordSuccess() {
         val now = System.currentTimeMillis()
         check(prefs.edit().putLong("last_sync", now).putLong("last_sync_attempt", now)
-            .putString("last_error", "").commit())
+            .putString("last_error", "").remove("sync_stopped").commit())
+        mutable.value = read()
+    }
+
+    /** Records a problem that retrying cannot fix; sync stays off until [resumeSync] or [save]. */
+    fun stopSync(problem: String, message: String) {
+        check(prefs.edit().putString("sync_stopped", problem).putString("last_error", message)
+            .putLong("last_sync_attempt", System.currentTimeMillis()).commit())
+        mutable.value = read()
+    }
+
+    fun resumeSync() {
+        check(prefs.edit().remove("sync_stopped").commit())
         mutable.value = read()
     }
 

@@ -27,7 +27,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val dao = container.db.bookmarks()
         dao.recoverInterrupted()
         val settings = container.settings.state.value
-        if (settings.serverUrl.isBlank() || !settings.hasToken) return Result.success()
+        if (!settings.canSync) return Result.success()
         val token = try { container.settings.token() } catch (cancel: CancellationException) {
             throw cancel
         } catch (error: Exception) {

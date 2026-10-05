@@ -98,6 +98,29 @@ class SyncSchedulerTest {
         }
     }
 
+    @Test fun schedulerCreatesNoWorkWhileSyncCannotRun() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workManager = WorkManager.getInstance(context)
+        workManager.cancelUniqueWork("linkding-sync").result.get()
+        try {
+            val scheduler = SyncScheduler(context) { false }
+            scheduler.requestSync()
+            scheduler.ensureScheduled()
+            assertTrue(workManager.getWorkInfosForUniqueWork("linkding-sync").get()
+                .none { !it.state.isFinished })
+
+            val existing = OneTimeWorkRequestBuilder<SyncWorker>()
+                .setInitialDelay(1, TimeUnit.DAYS).build()
+            workManager.enqueueUniqueWork("linkding-sync", ExistingWorkPolicy.KEEP,
+                existing).result.get()
+            scheduler.restartSync()
+            assertTrue(workManager.getWorkInfosForUniqueWork("linkding-sync").get()
+                .none { !it.state.isFinished })
+        } finally {
+            workManager.cancelUniqueWork("linkding-sync").result.get()
+        }
+    }
+
     @Test fun restartCreatesWorkWhenNoCurrentSyncExists() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workManager = WorkManager.getInstance(context)

@@ -53,6 +53,30 @@ class SyncRecoveryTest {
         }
     }
 
+    @Test fun periodicRecoveryExistsOnlyWhileSyncCanRun() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val app = context.applicationContext as ShareDingApplication
+        val workManager = WorkManager.getInstance(context)
+        fun recovery() = workManager.getWorkInfosForUniqueWork("linkding-sync-recovery").get()
+            .filter { !it.state.isFinished }
+        try {
+            app.container.settings.save("", null, "", true, false)
+            app.container.updateRecovery()
+            assertTrue(recovery().isEmpty())
+
+            app.container.settings.save("https://linkding.example/", "test-token", "", true, false)
+            app.container.updateRecovery()
+            assertEquals(1, recovery().size)
+
+            app.container.settings.stopSync("AUTH", "linkding returned HTTP 401")
+            app.container.updateRecovery()
+            assertTrue(recovery().isEmpty())
+        } finally {
+            app.container.settings.save("", null, "", true, false)
+            app.container.updateRecovery()
+        }
+    }
+
     @Test fun emptyQueueDoesNotScheduleSync() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val app = context.applicationContext as ShareDingApplication
