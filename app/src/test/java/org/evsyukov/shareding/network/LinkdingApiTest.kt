@@ -8,6 +8,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.SocketPolicy
 import org.evsyukov.shareding.data.Bookmark
+import org.evsyukov.shareding.data.Settings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -19,9 +20,9 @@ class LinkdingApiTest {
         TlsMockServer().use { tls ->
             val server = tls.server
             server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
-            val bookmark = Bookmark(url = "https://example.com", title = "Example", tags = "one, two words",
-                unread = true, archived = false)
-            tls.api().send(server.url("/").toString(), "secret", bookmark)
+            val bookmark = Bookmark(url = "https://example.com", title = "Example", tags = "two words, one")
+            tls.api().send(server.url("/").toString(), "secret", bookmark,
+                Settings(defaultTags = "one", unread = true, archived = false))
             val request = server.takeRequest()
             assertEquals("/api/bookmarks/", request.path)
             assertEquals("Token secret", request.getHeader("Authorization"))
@@ -44,7 +45,7 @@ class LinkdingApiTest {
                 description = "Описание — déjà vu",
             )
 
-            tls.api().send(server.url("/").toString(), "secret", bookmark)
+            tls.api().send(server.url("/").toString(), "secret", bookmark, Settings())
 
             val request = server.takeRequest()
             assertEquals("application/json; charset=utf-8", request.getHeader("Content-Type"))
@@ -67,7 +68,7 @@ class LinkdingApiTest {
                     .addHeader("Location", destination.url("/stolen")))
                 try {
                     originalTls.api().send(original.url("/").toString(), "secret",
-                        Bookmark(url = "https://example.com"))
+                        Bookmark(url = "https://example.com"), Settings())
                     fail("Redirect must not count as success")
                 } catch (error: ApiException) {
                     assertEquals(302, error.code)
@@ -132,7 +133,7 @@ class LinkdingApiTest {
         TlsMockServer().use { tls ->
             tls.server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
             val bookmark = Bookmark(url = "https://example.com", title = "first line\n" + "x".repeat(600))
-            tls.api().send(tls.server.url("/").toString(), "secret", bookmark)
+            tls.api().send(tls.server.url("/").toString(), "secret", bookmark, Settings())
             val body = JsonParser.parseString(tls.server.takeRequest().body.readUtf8()).asJsonObject
             assertFalse(body.has("title"))
         }
@@ -142,7 +143,7 @@ class LinkdingApiTest {
         TlsMockServer().use { tls ->
             tls.server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
             tls.api().send(tls.server.url("/").toString(), "secret",
-                Bookmark(url = "https://example.com", title = " \n\t ", sendTitle = true))
+                Bookmark(url = "https://example.com", title = " \n\t ", sendTitle = true), Settings())
             val body = JsonParser.parseString(tls.server.takeRequest().body.readUtf8()).asJsonObject
             assertFalse(body.has("title"))
         }
@@ -153,7 +154,7 @@ class LinkdingApiTest {
             tls.server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
             val title = "a".repeat(511) + "😀" + "b" + "\nextra line"
             tls.api().send(tls.server.url("/").toString(), "secret",
-                Bookmark(url = "https://example.com", title = title, sendTitle = true))
+                Bookmark(url = "https://example.com", title = title, sendTitle = true), Settings())
             val body = JsonParser.parseString(tls.server.takeRequest().body.readUtf8()).asJsonObject
             val sentTitle = body.get("title").asString
             assertEquals(512, sentTitle.codePointCount(0, sentTitle.length))
@@ -196,7 +197,7 @@ class LinkdingApiTest {
         MockWebServer().use { server ->
             val error = runCatching {
                 LinkdingApi().send(server.url("/").toString(), "secret",
-                    Bookmark(url = "http://example.com/article"))
+                    Bookmark(url = "http://example.com/article"), Settings())
             }.exceptionOrNull()
             assertEquals("Use an HTTPS linkding server URL", error?.message)
             assertEquals(0, server.requestCount)

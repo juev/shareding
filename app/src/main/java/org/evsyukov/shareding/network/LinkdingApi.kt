@@ -13,6 +13,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 import org.evsyukov.shareding.data.Bookmark
+import org.evsyukov.shareding.data.Settings
 
 object Urls {
     const val HTTPS_REQUIRED = "Use an HTTPS linkding server URL"
@@ -114,7 +115,9 @@ class LinkdingApi(
             tags.distinct().sortedBy { it.lowercase() }
         }
 
-    suspend fun send(server: String, token: String, bookmark: Bookmark, network: Network? = null) =
+    /** [defaults] supplies the default tags and the unread and archive flags at the time of sending. */
+    suspend fun send(server: String, token: String, bookmark: Bookmark, defaults: Settings,
+                     network: Network? = null) =
         withContext(Dispatchers.IO) {
             val json = JsonObject().apply {
                 addProperty("url", bookmark.url)
@@ -125,10 +128,10 @@ class LinkdingApi(
                 addProperty("description", bookmark.description)
                 addProperty("notes", bookmark.notes)
                 add("tag_names", JsonArray().apply {
-                    TagNames.parse(bookmark.tags).forEach { add(it) }
+                    TagNames.parse(TagNames.combine(defaults.defaultTags, bookmark.tags)).forEach { add(it) }
                 })
-                addProperty("unread", bookmark.unread)
-                addProperty("is_archived", bookmark.archived)
+                addProperty("unread", defaults.unread)
+                addProperty("is_archived", defaults.archived)
             }
             request(endpoint(server, "api/bookmarks/"), token, "POST", json.toString(), network)
         }

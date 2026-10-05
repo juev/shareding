@@ -50,7 +50,7 @@ class ShareDingApplication : Application() {
 
 class AppContainer(application: Application) {
     val db: AppDatabase = Room.databaseBuilder(application, AppDatabase::class.java, "bookmarks.db")
-        .addMigrations(AppDatabase.MIGRATION_1_2).build()
+        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3).build()
     val settings = SettingsStore(application)
     val api = LinkdingApi()
     val pageFetcher = PageMetadataFetcher()

@@ -48,11 +48,8 @@ class ShareActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             val message = try {
-                val defaults = container.settings.state.value
                 val id = withContext(Dispatchers.IO) {
-                    container.db.bookmarks().insert(Bookmark(url = url, title = title,
-                        tags = defaults.defaultTags, unread = defaults.unread,
-                        archived = defaults.archived))
+                    container.db.bookmarks().insert(Bookmark(url = url, title = title))
                 }
                 SyncProblem.savedMessage(id != -1L, container.linkSaved())
             } catch (cancel: CancellationException) {

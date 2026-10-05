@@ -74,7 +74,9 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                 if (dao.markSyncing(bookmark.id) == 0) continue
                 try {
                     val outgoing = container.shortLinks.resolve(bookmark, selectedNetwork)
-                    container.api.send(settings.serverUrl, token, outgoing, selectedNetwork)
+                    // Read per link: defaults changed in Settings apply to everything still queued.
+                    container.api.send(settings.serverUrl, token, outgoing,
+                        container.settings.state.value, selectedNetwork)
                     dao.delete(bookmark.id)
                 } catch (cancel: CancellationException) {
                     throw cancel

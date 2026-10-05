@@ -277,7 +277,8 @@ class QueueUiTest {
     @Test fun fullScreenFormSavesBookmarkLocally() {
         val app = compose.activity.application as ShareDingApplication
         val url = "https://example.com/manual-${System.nanoTime()}"
-        app.container.settings.save("", null, "", true, false)
+        // Default tags join the link when it is sent; the queue keeps only what was typed here.
+        app.container.settings.save("", null, "reading", true, false)
         runBlocking { withContext(Dispatchers.IO) { app.container.db.clearAllTables() } }
         compose.onNodeWithText("Add bookmark").performClick()
         compose.onNodeWithText("URL").performTextInput(url)
@@ -291,6 +292,7 @@ class QueueUiTest {
         assertEquals("local, work notes", runBlocking { app.container.db.bookmarks().findByUrl(url)?.tags })
         assertEquals("Manual title", runBlocking { app.container.db.bookmarks().findByUrl(url)?.title })
         assertEquals(true, runBlocking { app.container.db.bookmarks().findByUrl(url)?.sendTitle })
+        app.container.settings.save("", null, "", true, false)
     }
 
     @Test fun fetchPageDetailsFillsTitleAndDescriptionButNotTags() {
@@ -450,7 +452,8 @@ class QueueUiTest {
             compose.waitUntil(5_000) {
                 runBlocking { app.container.db.bookmarks().findByUrl(url) != null }
             }
-            assertEquals("reading, research", runBlocking {
+            // The default tag "reading" is added when the link is sent, not stored with it.
+            assertEquals("research", runBlocking {
                 app.container.db.bookmarks().findByUrl(url)?.tags
             })
         }

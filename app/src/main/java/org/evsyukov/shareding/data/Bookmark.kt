@@ -22,9 +22,8 @@ data class Bookmark(
     @ColumnInfo(defaultValue = "0") val sendTitle: Boolean = false,
     val description: String = "",
     val notes: String = "",
+    /** Tags entered for this link only; default tags and flags are applied when it is sent. */
     val tags: String = "",
-    val unread: Boolean = false,
-    val archived: Boolean = false,
     val metadataFetched: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val status: String = "pending",
@@ -75,7 +74,7 @@ interface BookmarkDao {
     suspend fun markMetadataFetched(id: Long)
 }
 
-@Database(entities = [Bookmark::class], version = 2, exportSchema = false)
+@Database(entities = [Bookmark::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookmarks(): BookmarkDao
 
@@ -83,6 +82,27 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE bookmarks ADD COLUMN sendTitle INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /**
+         * Drops `unread` and `archived`: both now come from settings when a link is sent. The table
+         * is rebuilt because SQLite before 3.35 (Android 13 and older) cannot drop a column.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val columns = "id, url, title, sendTitle, description, notes, tags, metadataFetched, createdAt, status, attempts, lastAttemptAt, lastError"
+                db.execSQL("""CREATE TABLE bookmarks_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, url TEXT NOT NULL,
+                    title TEXT NOT NULL, sendTitle INTEGER NOT NULL DEFAULT 0,
+                    description TEXT NOT NULL, notes TEXT NOT NULL, tags TEXT NOT NULL,
+                    metadataFetched INTEGER NOT NULL, createdAt INTEGER NOT NULL,
+                    status TEXT NOT NULL, attempts INTEGER NOT NULL, lastAttemptAt INTEGER,
+                    lastError TEXT)""")
+                db.execSQL("INSERT INTO bookmarks_new ($columns) SELECT $columns FROM bookmarks")
+                db.execSQL("DROP TABLE bookmarks")
+                db.execSQL("ALTER TABLE bookmarks_new RENAME TO bookmarks")
+                db.execSQL("CREATE UNIQUE INDEX index_bookmarks_url ON bookmarks(url)")
             }
         }
     }
