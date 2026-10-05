@@ -1,7 +1,6 @@
 package org.evsyukov.shareding.sync
 
 import android.Manifest
-import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -9,8 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.provider.Settings
-import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -60,26 +57,10 @@ enum class SyncProblem(val title: String) {
     }
 }
 
-/** What the Settings switch for sync alerts should do next. */
-enum class NotificationAccess { ON, REQUEST_PERMISSION, OPEN_SETTINGS;
-
-    companion object {
-        /**
-         * Android shows the permission dialog only until the user denies it twice, so after that the
-         * app has to send the user to the system notification settings instead.
-         */
-        fun of(needsPermission: Boolean, granted: Boolean, enabled: Boolean, requestedBefore: Boolean,
-               showRationale: Boolean): NotificationAccess = when {
-            needsPermission && !granted ->
-                if (!requestedBefore || showRationale) REQUEST_PERMISSION else OPEN_SETTINGS
-            !enabled -> OPEN_SETTINGS
-            else -> ON
-        }
-
-        /** The app asks on its own only once; later requests come from the Settings switch. */
-        fun askOnLaunch(needsPermission: Boolean, granted: Boolean, requestedBefore: Boolean): Boolean =
-            needsPermission && !granted && !requestedBefore
-    }
+object NotificationAccess {
+    /** The app asks once; after that the user changes the answer in the system settings. */
+    fun askOnLaunch(needsPermission: Boolean, granted: Boolean, requestedBefore: Boolean): Boolean =
+        needsPermission && !granted && !requestedBefore
 }
 
 /**
@@ -120,22 +101,9 @@ class SyncNotifier(private val context: Context, private val now: () -> Long = S
         }
     }
 
-    fun access(activity: Activity): NotificationAccess = NotificationAccess.of(
-        needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
-        granted = hasPermission(),
-        enabled = enabled(),
-        requestedBefore = prefs.getBoolean(KEY_PERMISSION_REQUESTED, false),
-        showRationale = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ActivityCompat.shouldShowRequestPermissionRationale(activity,
-                Manifest.permission.POST_NOTIFICATIONS),
-    )
-
     /** Notifications are allowed for the app and the sync channel has not been turned off. */
     private fun enabled(): Boolean = manager.areNotificationsEnabled() &&
         manager.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
-
-    fun settingsIntent(): Intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
 
     fun shouldRequestPermission(): Boolean = NotificationAccess.askOnLaunch(
         needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,

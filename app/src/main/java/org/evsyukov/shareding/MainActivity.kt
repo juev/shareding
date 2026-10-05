@@ -8,10 +8,8 @@ import android.text.format.DateUtils
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -111,8 +109,6 @@ import org.evsyukov.shareding.data.Settings
 import org.evsyukov.shareding.network.TagNames
 import org.evsyukov.shareding.network.BookmarkTitles
 import org.evsyukov.shareding.network.Urls
-import org.evsyukov.shareding.sync.NotificationAccess
-import org.evsyukov.shareding.sync.SyncNotifier
 import org.evsyukov.shareding.sync.SyncProblem
 
 class MainActivity : ComponentActivity() {
@@ -264,7 +260,7 @@ private fun ShareDingScreen(container: AppContainer) {
             },
             onDelete = { deleteTarget = it })
         }
-        else SettingsScreen(settings, container.notifier, padding, serverTags, tagLoadError,
+        else SettingsScreen(settings, padding, serverTags, tagLoadError,
             onSave = { server, token, tags, unread, archived ->
                 if (server.isNotBlank()) Urls.server(server)
                 // Default tags now reach linkding without passing through the Add Bookmark check.
@@ -436,42 +432,6 @@ private fun QueueScreen(bookmarks: List<Bookmark>, padding: PaddingValues,
             }
         }
     }
-}
-
-@Composable
-private fun NotificationSetting(notifier: SyncNotifier) {
-    val activity = LocalActivity.current ?: return
-    var access by remember { mutableStateOf(notifier.access(activity)) }
-    // The user may change the permission or channel in system settings and come back.
-    LifecycleResumeEffect(notifier) {
-        access = notifier.access(activity)
-        onPauseOrDispose { }
-    }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        access = notifier.access(activity)
-    }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween) {
-        Column(Modifier.weight(1f)) {
-            Text("Sync problem alerts")
-            Text(if (access == NotificationAccess.ON) "On" else "Off",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        if (access != NotificationAccess.ON) OutlinedButton(onClick = {
-            if (access == NotificationAccess.REQUEST_PERMISSION) {
-                notifier.markPermissionRequested()
-                permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                activity.startActivity(notifier.settingsIntent())
-            }
-        }) { Text("Turn on") }
-    }
-    Text(if (access == NotificationAccess.ON)
-        "ShareDing notifies you when links cannot be delivered or have waited more than a day."
-        else "Sync keeps working without notifications; problems are shown in Queue.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /** Reads the clipboard only when called; returns its first HTTP(S) link. */
@@ -656,7 +616,7 @@ internal fun TagInput(value: String, onValueChange: (String) -> Unit, label: Str
 }
 
 @Composable
-private fun SettingsScreen(settings: Settings, notifier: SyncNotifier, padding: PaddingValues,
+private fun SettingsScreen(settings: Settings, padding: PaddingValues,
                            availableTags: List<String>, tagLoadError: Boolean,
                            onSave: suspend (String, String?, String, Boolean, Boolean) -> Unit,
                            onTest: suspend (String, String) -> Unit,
@@ -749,9 +709,6 @@ private fun SettingsScreen(settings: Settings, notifier: SyncNotifier, padding: 
                 SwitchRow("Mark unread", unread) { unread = it; saveStatus = null }
                 SwitchRow("Archive", archived) { archived = it; saveStatus = null }
             }
-        }
-        item {
-            SettingsGroup("Notifications") { NotificationSetting(notifier) }
         }
         item {
             SettingsGroup("About") {
