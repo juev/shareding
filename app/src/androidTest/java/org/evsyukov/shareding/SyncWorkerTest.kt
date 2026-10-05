@@ -228,6 +228,65 @@ class SyncWorkerTest {
         }
     }
 
+    @Test fun rejectedTokenStopsSyncUntilTheUserResumes() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val tls = AndroidTestTls(InstrumentationRegistry.getInstrumentation().context)
+        val app = context.applicationContext as ShareDingApplication
+        WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
+        val dao = app.container.db.bookmarks()
+        withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+        MockWebServer().apply { tls.start(this) }.use { server ->
+            try {
+                app.container.settings.save(tls.url(server), "revoked", "", true, false)
+                dao.insert(Bookmark(url = "https://example.com/stopped"))
+                server.enqueue(MockResponse().setResponseCode(401).setBody("Invalid token."))
+                val result = TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+                assertEquals(androidx.work.ListenableWorker.Result.success(), result)
+                assertEquals("AUTH", app.container.settings.state.value.syncStopped)
+                assertEquals("failed", dao.batch(1).single().status)
+                assertEquals(1, server.requestCount)
+
+                TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+                assertEquals(1, server.requestCount)
+
+                app.container.settings.resumeSync()
+                server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+                TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+                assertEquals(0, dao.count())
+                assertEquals("", app.container.settings.state.value.syncStopped)
+            } finally {
+                app.container.settings.save("", null, "", true, false)
+            }
+        }
+    }
+
+    @Test fun forbiddenPostStopsSyncAndLeavesLaterEntriesPending() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val tls = AndroidTestTls(InstrumentationRegistry.getInstrumentation().context)
+        val app = context.applicationContext as ShareDingApplication
+        WorkManager.getInstance(context).cancelUniqueWork("linkding-sync").result.get()
+        val dao = app.container.db.bookmarks()
+        withContext(Dispatchers.IO) { app.container.db.clearAllTables() }
+        MockWebServer().apply { tls.start(this) }.use { server ->
+            try {
+                app.container.settings.save(tls.url(server), "read-only", "", true, false)
+                dao.insert(Bookmark(url = "https://example.com/first", createdAt = 1))
+                dao.insert(Bookmark(url = "https://example.com/second", createdAt = 2))
+                server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+                server.enqueue(MockResponse().setResponseCode(403).setBody("Forbidden"))
+                val result = TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
+                assertEquals(androidx.work.ListenableWorker.Result.success(), result)
+                assertEquals("AUTH", app.container.settings.state.value.syncStopped)
+                assertEquals(2, server.requestCount)
+                assertEquals("failed", dao.findByUrl("https://example.com/first")?.status)
+                assertEquals("pending", dao.findByUrl("https://example.com/second")?.status)
+            } finally {
+                app.container.settings.save("", null, "", true, false)
+            }
+        }
+    }
+
     @Test fun httpLinkdingServerRetainsQueueWithoutSendingToken() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val app = context.applicationContext as ShareDingApplication
@@ -246,6 +305,7 @@ class SyncWorkerTest {
                 assertEquals(1, dao.count())
                 assertEquals("Keep this bookmark", dao.findByUrl(url)?.title)
                 assertEquals("failed", dao.findByUrl(url)?.status)
+                assertEquals("HTTPS", app.container.settings.state.value.syncStopped)
             } finally {
                 app.container.settings.save("", null, "", true, false)
             }

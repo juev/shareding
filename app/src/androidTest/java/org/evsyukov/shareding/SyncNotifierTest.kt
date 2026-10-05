@@ -115,6 +115,8 @@ class SyncNotifierTest {
                 assertEquals(SyncProblem.AUTH.title,
                     active(SyncNotifier.PROBLEM_ID)?.notification?.extras?.getString("android.title"))
 
+                // A rejected token stops sync; the next attempt needs Sync now, Retry, or new settings.
+                app.container.settings.resumeSync()
                 server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
                 server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
                 TestListenableWorkerBuilder<SyncWorker>(context).build().doWork()
