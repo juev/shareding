@@ -5,7 +5,7 @@
 [![Android CI](https://github.com/juev/shareding/actions/workflows/android.yml/badge.svg)](https://github.com/juev/shareding/actions/workflows/android.yml)
 [![Latest release](https://img.shields.io/github/v/release/juev/shareding?include_prereleases)](https://github.com/juev/shareding/releases)
 
-ShareDing is an Android share target for [linkding](https://github.com/sissbruecker/linkding). It saves links from other apps to a local queue, then sends them to your linkding server. It requires Android 9 (API 28) or newer.
+ShareDing is an Android share target for [linkding](https://github.com/sissbruecker/linkding). It saves links from other apps to a local queue, then sends them to your linkding server. It requires Android 10 (API 29) or newer.
 
 [Releases](https://github.com/juev/shareding/releases) · [Quick start](#quick-start) · [Screenshots](#screenshots) · [Privacy](docs/privacy.md) · [Contributing](#contributing) · [License](#license)
 
@@ -20,7 +20,7 @@ Saving a link should not depend on whether your linkding server is reachable at 
 3. WorkManager runs sync when a network is available. ShareDing checks the configured linkding server itself, so a server reachable through LAN or VPN does not need public internet access.
 4. Before sending a link from a known URL shortener such as `t.co`, `bit.ly`, or `vk.cc`, ShareDing asks the shortener where it leads and sends that address instead, noting the short link in the bookmark notes. It never opens the target site, so a blocked destination does not matter; if the shortener cannot be reached, the short link is sent as is. After linkding accepts the bookmark, ShareDing removes it from the queue. Connection and server errors leave it queued for another attempt. Retries use exponential backoff starting at 30 seconds; Android may run them later than the scheduled time.
 
-WorkManager also checks for queued links about every 30 minutes when a suitable network is available. This check reads the local queue and restores a missing sync job; it does not contact linkding or reset an existing retry delay. Android may postpone the check to save battery. It can run after the app process has been removed or the phone has rebooted, without opening ShareDing. A user force-stop pauses background work until the app is opened or used from the Share menu.
+While a server is set up and sync is not stopped, WorkManager also checks for queued links about every 30 minutes when a suitable network is available. This check reads the local queue and restores a missing sync job; it does not contact linkding or reset an existing retry delay. Android may postpone the check to save battery. It can run after the app process has been removed or the phone has rebooted, without opening ShareDing. A user force-stop pauses background work until the app is opened or used from the Share menu.
 
 The queue survives app restarts and device reboots. Delivery is at least once: if linkding accepts a request but the response is lost, ShareDing may send the same URL again. Linkding updates an existing bookmark with that URL.
 
@@ -40,12 +40,12 @@ These screens were captured on an Android 16 emulator with an example link in th
 
 1. Install the APK using [Obtainium](https://github.com/ImranR98/Obtainium) or download it from [Releases](https://github.com/juev/shareding/releases). See [Install and update](#install-and-update) for details.
 2. In Settings, enter your HTTPS linkding server URL and API token, then tap **Save settings** at the bottom. Use **Test Connection** to check the server. If you previously configured an HTTP server URL, change it to HTTPS to resume sync; your queued bookmarks remain on the device.
-3. Open a browser's Share menu and select **ShareDing**. It returns to the browser after a short confirmation without opening the main app screen. To add tags or a description, tap `+` in Queue and enter the link manually; the paste button in the URL field inserts the first link from the clipboard. The full-screen form accepts a URL, title, description, and tags; **Fetch page details** fills an empty title and description from the page; tags stay as you enter them.
+3. Open a browser's Share menu and select **ShareDing**, either in the app row or in the Direct Share row above it. It returns to the browser after a short confirmation without opening the main app screen. To add tags or a description, tap `+` in Queue and enter the link manually; the paste button in the URL field inserts the first link from the clipboard. The full-screen form accepts a URL, title, description, and tags; **Fetch page details** fills an empty title and description from the page; tags stay as you enter them.
 4. Check Queue for waiting, sending, or failed bookmarks and the last sync result and time. Tap a card to inspect and copy its full title, URL, and error. Failed entries have a **Retry** action; the **Sync now** button in Queue restarts sync immediately when a network is available and, with an empty queue, checks the server so the last sync result stays current. Removing an entry requires confirmation and restarts sync with the remaining links.
 
-If sync hits a problem that retrying cannot fix, such as a rejected API token, or links wait longer than a day, ShareDing shows a notification. On Android 13 and newer it asks for the notification permission the first time you open the app; you can turn alerts on later in Settings. Without notifications, sync works the same and errors stay visible in Queue.
+If sync hits a problem that retrying cannot fix, such as a rejected API token, ShareDing stops sync and shows a notification. Sync starts again when you save settings, tap **Sync now**, or tap **Retry**. Until then, and while no server is set up, saving a link shows the reason in the confirmation and in a notification, and no background work runs. Links that wait longer than a day also raise a notification. On Android 13 and newer it asks for the notification permission the first time you open the app; you can turn alerts on later in Settings. Without notifications, sync works the same and errors stay visible in Queue.
 
-Settings also lets you set default tags and choose whether new bookmarks are marked unread or archived. Enter multiple tags with commas, for example `reading, work notes`, then tap **Save settings**. With a configured connection, existing linkding tags appear as suggestions while you type in Settings or a bookmark form. You can still enter new tags and save while the server is offline.
+Settings also lets you set default tags and choose whether bookmarks are marked unread or archived. These defaults are applied when a link is sent, so changing them affects links already in the queue. Enter multiple tags with commas, for example `reading, work notes`, then tap **Save settings**. With a configured connection, existing linkding tags appear as suggestions while you type in Settings or a bookmark form. You can still enter new tags and save while the server is offline.
 
 ShareDing connects to linkding and bookmarked pages directly. It has no proxy setting; if your server is reachable only through another route, use a VPN on your device. Versions before 0.2.1 had an optional HTTP proxy. It was removed because proxy credentials were sent without TLS, and updating deletes any saved proxy settings.
 
@@ -59,7 +59,7 @@ For automatic update checks, use [Obtainium](https://github.com/ImranR98/Obtaini
 
 For manual installation, open [Releases](https://github.com/juev/shareding/releases) on your phone, download the latest APK, and confirm the installation. If Android asks for permission to install apps from this source, grant it to your browser or file manager. To update, download the newer APK and install it over the current version.
 
-You can also install the downloaded APK over USB with `adb install -r /path/to/downloaded.apk`. All methods require Android 9 or newer. Release APKs use the same signing key, which Android requires for updates. Debug APKs use a different key. If you already installed a debug build, uninstall it before installing the release build. Uninstalling deletes its settings and local queue.
+You can also install the downloaded APK over USB with `adb install -r /path/to/downloaded.apk`. All methods require Android 10 or newer. Release APKs use the same signing key, which Android requires for updates. Debug APKs use a different key. If you already installed a debug build, uninstall it before installing the release build. Uninstalling deletes its settings and local queue.
 
 ## Build
 
