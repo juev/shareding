@@ -16,17 +16,41 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import org.evsyukov.shareding.MainActivity
 import org.evsyukov.shareding.R
+import org.evsyukov.shareding.data.Settings as AppSettings
 import org.evsyukov.shareding.network.ApiException
 import org.evsyukov.shareding.network.Urls
 
-/** Sync errors that another retry cannot fix without a change in settings or on the server. */
+/**
+ * Reasons saved links cannot be sent: errors that another retry cannot fix without a change in
+ * settings or on the server, and a server that has not been set up yet.
+ */
 enum class SyncProblem(val title: String) {
     AUTH("linkding rejected the API token"),
     NOT_FOUND("linkding API not found"),
     HTTPS("linkding server URL must use HTTPS"),
-    TOKEN("Cannot read the API token");
+    TOKEN("Cannot read the API token"),
+    NOT_CONFIGURED("linkding is not set up");
 
     companion object {
+        const val NOT_CONFIGURED_DETAIL =
+            "Saved links stay in the queue. Add the server URL and API token in Settings."
+
+        /** Why saved links cannot be sent right now, or null while sync can run. */
+        fun blocking(settings: AppSettings): SyncProblem? = when {
+            !settings.configured -> NOT_CONFIGURED
+            else -> entries.firstOrNull { it.name == settings.syncStopped }
+        }
+
+        /** Toast after a save; tells the user at once when the link will not be sent. */
+        fun savedMessage(inserted: Boolean, blocked: SyncProblem?): String {
+            val saved = if (inserted) "Saved to queue" else "Already in queue"
+            return when (blocked) {
+                null -> saved
+                NOT_CONFIGURED -> "$saved · linkding is not set up"
+                else -> "$saved · sync is stopped"
+            }
+        }
+
         fun of(error: Throwable): SyncProblem? = when {
             error is ApiException && (error.code == 401 || error.code == 403) -> AUTH
             error is ApiException && error.code == 404 -> NOT_FOUND
@@ -68,6 +92,11 @@ class SyncNotifier(private val context: Context, private val now: () -> Long = S
 
     fun problem(problem: SyncProblem, detail: String) {
         if (prefs.getString(KEY_PROBLEM, null) == problem.name) return
+        if (post(PROBLEM_ID, problem.title, detail)) prefs.edit().putString(KEY_PROBLEM, problem.name).apply()
+    }
+
+    /** Shown on every save while sync cannot run, even after the user dismissed it. */
+    fun remind(problem: SyncProblem, detail: String) {
         if (post(PROBLEM_ID, problem.title, detail)) prefs.edit().putString(KEY_PROBLEM, problem.name).apply()
     }
 

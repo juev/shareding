@@ -1,20 +1,78 @@
 package org.evsyukov.shareding
 
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.work.WorkManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.evsyukov.shareding.sync.SyncNotifier
+import org.evsyukov.shareding.sync.SyncProblem
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ShareIntentTest {
+    @get:Rule val notificationPermission = NotificationPermissionRule()
+
+    private fun problemTitle(context: Context): String? {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        repeat(40) {
+            manager.activeNotifications.firstOrNull { it.id == SyncNotifier.PROBLEM_ID }
+                ?.let { return it.notification.extras.getString("android.title") }
+            Thread.sleep(50)
+        }
+        return null
+    }
+
+    @Test fun shareWhileSyncCannotRunSavesTheLinkAndNotifiesWithoutSchedulingWork() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val app = context.applicationContext as ShareDingApplication
+        val workManager = WorkManager.getInstance(context)
+        val notifications = context.getSystemService(NotificationManager::class.java)
+        suspend fun share(url: String) {
+            context.startActivity(Intent(context, ShareActivity::class.java).apply {
+                action = Intent.ACTION_SEND
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, url)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+            for (attempt in 0 until 30) {
+                if (app.container.db.bookmarks().findByUrl(url) != null) return
+                delay(100)
+            }
+            throw AssertionError("Shared link was not saved: $url")
+        }
+        workManager.cancelUniqueWork("linkding-sync").result.get()
+        notifications.cancelAll()
+        try {
+            app.container.settings.save("", null, "", true, false)
+            share("https://example.com/unconfigured-${System.nanoTime()}")
+            assertEquals(SyncProblem.NOT_CONFIGURED.title, problemTitle(context))
+            assertTrue(workManager.getWorkInfosForUniqueWork("linkding-sync").get()
+                .none { !it.state.isFinished })
+
+            notifications.cancelAll()
+            app.container.settings.save("https://127.0.0.1:1/", "revoked", "", true, false)
+            app.container.settings.stopSync("AUTH", "linkding returned HTTP 401")
+            share("https://example.com/stopped-${System.nanoTime()}")
+            assertEquals(SyncProblem.AUTH.title, problemTitle(context))
+            assertTrue(workManager.getWorkInfosForUniqueWork("linkding-sync").get()
+                .none { !it.state.isFinished })
+        } finally {
+            app.container.settings.save("", null, "", true, false)
+            notifications.cancelAll()
+        }
+    }
+
     @Test fun appearsInTextShareTargets() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain" }

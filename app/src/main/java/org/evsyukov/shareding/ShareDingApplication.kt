@@ -18,6 +18,7 @@ import org.evsyukov.shareding.network.NetworkTracker
 import org.evsyukov.shareding.network.PageMetadataFetcher
 import org.evsyukov.shareding.network.ShortLinkResolver
 import org.evsyukov.shareding.sync.SyncNotifier
+import org.evsyukov.shareding.sync.SyncProblem
 import org.evsyukov.shareding.sync.SyncScheduler
 
 class ShareDingApplication : Application() {
@@ -68,6 +69,19 @@ class AppContainer(application: Application) {
     /** Keeps the periodic recovery check only while sync can run. */
     suspend fun updateRecovery() {
         if (settings.state.value.canSync) scheduler.ensureRecoveryScheduled() else scheduler.cancelRecovery()
+    }
+
+    /** After a link is saved: schedules sync, or tells the user why the link will not be sent. */
+    suspend fun linkSaved(): SyncProblem? {
+        val current = settings.state.value
+        val blocked = SyncProblem.blocking(current)
+        if (blocked == null) {
+            scheduler.requestSync()
+        } else {
+            notifier.remind(blocked, if (blocked == SyncProblem.NOT_CONFIGURED)
+                SyncProblem.NOT_CONFIGURED_DETAIL else current.lastError)
+        }
+        return blocked
     }
 
     /** Sync now and Retry ask for another attempt, so a stopped sync starts again. */

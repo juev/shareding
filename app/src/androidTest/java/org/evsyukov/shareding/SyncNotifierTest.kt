@@ -78,6 +78,18 @@ class SyncNotifierTest {
         assertNotNull("A resolved problem may be shown again", active(SyncNotifier.PROBLEM_ID))
     }
 
+    @Test fun reminderReturnsAfterTheUserDismissedIt() {
+        val notifier = SyncNotifier(context) { now }
+        notifier.remind(SyncProblem.NOT_CONFIGURED, SyncProblem.NOT_CONFIGURED_DETAIL)
+        assertEquals(SyncProblem.NOT_CONFIGURED.title,
+            active(SyncNotifier.PROBLEM_ID)?.notification?.extras?.getString("android.title"))
+        manager.cancel(SyncNotifier.PROBLEM_ID)
+        waitGone(SyncNotifier.PROBLEM_ID)
+
+        notifier.remind(SyncProblem.NOT_CONFIGURED, SyncProblem.NOT_CONFIGURED_DETAIL)
+        assertNotNull("Every save while sync cannot run reminds again", active(SyncNotifier.PROBLEM_ID))
+    }
+
     @Test fun staleQueueIsShownOncePerOldestEntry() {
         val notifier = SyncNotifier(context) { now }
         notifier.checkStale(now - SyncNotifier.STALE_AFTER_MS + 60_000)

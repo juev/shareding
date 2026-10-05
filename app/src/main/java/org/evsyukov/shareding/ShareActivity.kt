@@ -14,6 +14,7 @@ import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.Bookmark
 import org.evsyukov.shareding.network.BookmarkTitles
 import org.evsyukov.shareding.network.Urls
+import org.evsyukov.shareding.sync.SyncProblem
 
 /** The link and title an app passes with `ACTION_SEND`. */
 internal data class SharedLink(val url: String, val title: String) {
@@ -53,8 +54,7 @@ class ShareActivity : ComponentActivity() {
                         tags = defaults.defaultTags, unread = defaults.unread,
                         archived = defaults.archived))
                 }
-                container.scheduler.requestSync()
-                if (id == -1L) "Already in queue" else "Saved to queue"
+                SyncProblem.savedMessage(id != -1L, container.linkSaved())
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Exception) {
