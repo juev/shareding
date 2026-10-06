@@ -711,7 +711,7 @@ private fun SettingsScreen(settings: Settings, padding: PaddingValues,
             SettingsGroup("Bookmark defaults") {
                 TagInput(tags, { tags = it; saveStatus = null }, "Default tags",
                     if (savedConnectionIsCurrent) availableTags else emptyList(),
-                    "Comma-separated: reading, work notes. Added to new bookmarks.",
+                    "Comma-separated: reading, work notes. Added when a link is sent.",
                     tagLoadError && savedConnectionIsCurrent,
                     canRefresh = settings.configured && savedConnectionIsCurrent, onRefreshTags = onRefreshTags)
                 SwitchRow("Mark unread", unread) { unread = it; saveStatus = null }
