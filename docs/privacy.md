@@ -6,7 +6,7 @@ ShareDing is an Android app that saves bookmarks on your device and sends them t
 
 ## Data handled by the app
 
-ShareDing stores queued bookmark URLs, titles, descriptions, notes, tags, unread and archive choices, and delivery status on your device. It also stores your linkding server URL, default settings, and the most recent sync time and error. The linkding API token is encrypted on the device using a key held by Android Keystore.
+ShareDing stores queued bookmark URLs, titles, descriptions, notes, tags, and delivery status on your device. It also stores your linkding server URL, default tags, unread and archive choices, and the most recent sync time and error. The linkding API token is encrypted on the device using a key held by Android Keystore.
 
 When sync runs, ShareDing sends the bookmark fields and API token to your configured linkding server. The server URL must use HTTPS. Your linkding server's operator determines how data sent to that server is stored and used; consult that server's policy if you do not operate it yourself. ShareDing has no developer-operated service that receives your bookmarks or token.
 
