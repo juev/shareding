@@ -7,6 +7,8 @@
 
 ShareDing is an Android share target for [linkding](https://github.com/sissbruecker/linkding). It saves links from other apps to a local queue, then sends them to your linkding server. It requires Android 10 (API 29) or newer.
 
+<a href="https://play.google.com/store/apps/details?id=org.evsyukov.shareding"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80"></a>
+
 [Releases](https://github.com/juev/shareding/releases) · [Quick start](#quick-start) · [Screenshots](#screenshots) · [Privacy](docs/privacy.md) · [Contributing](#contributing) · [License](#license)
 
 ## Why it exists
@@ -38,7 +40,7 @@ These screens were captured on an Android 16 emulator with an example link in th
 
 ## Quick start
 
-1. Install the APK using [Obtainium](https://github.com/ImranR98/Obtainium) or download it from [Releases](https://github.com/juev/shareding/releases). See [Install and update](#install-and-update) for details.
+1. Install the app from [Google Play](https://play.google.com/store/apps/details?id=org.evsyukov.shareding), or install the APK using [Obtainium](https://github.com/ImranR98/Obtainium) or download it from [Releases](https://github.com/juev/shareding/releases). See [Install and update](#install-and-update) for details.
 2. In Settings, enter your HTTPS linkding server URL and API token, then tap **Save settings** at the bottom. Use **Test Connection** to check the server. If you previously configured an HTTP server URL, change it to HTTPS to resume sync; your queued bookmarks remain on the device.
 3. Open a browser's Share menu and select **ShareDing**, either in the app row or in the Direct Share row above it. It returns to the browser after a short confirmation without opening the main app screen. To add tags or a description, tap `+` in Queue and enter the link manually; the paste button in the URL field inserts the first link from the clipboard. The full-screen form accepts a URL, title, description, and tags; **Fetch page details** fills an empty title and description from the page; tags stay as you enter them.
 4. Check Queue for waiting, sending, or failed bookmarks and the last sync result and time. Tap a card to inspect and copy its full title, URL, and error. Failed entries have a **Retry** action; the **Sync now** button in Queue restarts sync immediately when a network is available and, with an empty queue, checks the server so the last sync result stays current. Removing an entry requires confirmation and restarts sync with the remaining links.
