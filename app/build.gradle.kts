@@ -1,8 +1,7 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("org.jetbrains.kotlin.kapt")
+    id("com.google.devtools.ksp")
 }
 
 val releaseKeystore = providers.environmentVariable("SHAREDING_RELEASE_KEYSTORE").orNull
@@ -52,8 +51,10 @@ android {
     namespace = "org.evsyukov.shareding"
     compileSdk = 36
 
-    sourceSets.getByName("debug").res.srcDir(testTlsRoot.map { it.dir("debug/res") })
-    sourceSets.getByName("androidTest").assets.srcDir(testTlsRoot.map { it.dir("androidTest/assets") })
+    // AGP 9 rejects Provider source directories; the tasks above are wired in by name.
+    sourceSets.getByName("debug").res.directories.add(testTlsRoot.get().dir("debug/res").asFile.path)
+    sourceSets.getByName("androidTest").assets.directories
+        .add(testTlsRoot.get().dir("androidTest/assets").asFile.path)
 
     defaultConfig {
         applicationId = "org.evsyukov.shareding"
@@ -131,7 +132,7 @@ dependencies {
 
     implementation("androidx.room:room-runtime:2.8.5")
     implementation("androidx.room:room-ktx:2.8.5")
-    kapt("androidx.room:room-compiler:2.8.5")
+    ksp("androidx.room:room-compiler:2.8.5")
 
     implementation("androidx.work:work-runtime-ktx:2.12.0")
     implementation("com.google.code.gson:gson:2.13.2")
