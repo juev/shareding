@@ -25,6 +25,8 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.work.WorkManager
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -43,6 +45,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Before
 import org.junit.After
@@ -231,6 +234,20 @@ class QueueUiTest {
         compose.onNodeWithText("Discard bookmark?").assertIsDisplayed()
         compose.onNodeWithText("Discard").performClick()
         compose.onNodeWithText("Add Bookmark").assertDoesNotExist()
+    }
+
+    @Test fun saveButtonStaysAboveNavigationBar() {
+        clearQueue()
+        compose.onNodeWithText("Add bookmark").performClick()
+        compose.waitForIdle()
+        val decor = compose.activity.window.decorView
+        val navigationBar = ViewCompat.getRootWindowInsets(decor)
+            ?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+        // Before Android 15 the system keeps the app out of the bar, so there is nothing to overlap.
+        assumeTrue("App window is not drawn under the navigation bar", navigationBar > 0)
+        val button = compose.onNodeWithText("Save bookmark").fetchSemanticsNode().boundsInWindow
+        assertTrue("Save bookmark ends at ${button.bottom}px, the navigation bar starts at " +
+            "${decor.height - navigationBar}px", button.bottom <= decor.height - navigationBar)
     }
 
     private fun clearQueue() {
