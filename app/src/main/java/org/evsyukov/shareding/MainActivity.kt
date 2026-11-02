@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -511,7 +512,10 @@ private fun AddBookmarkScreen(container: AppContainer, availableTags: List<Strin
             }
         }) },
         bottomBar = {
-            Box(Modifier.fillMaxWidth().imePadding(), contentAlignment = Alignment.Center) {
+            // Scaffold leaves bottomBar insets to the bar itself; without the navigation bar
+            // padding the button sits under the three-button bar on Android 15+.
+            Box(Modifier.fillMaxWidth().navigationBarsPadding().imePadding(),
+                contentAlignment = Alignment.Center) {
                 Button(onClick = save, enabled = !saving && !busy,
                     modifier = Modifier.contentWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Text("Save bookmark")
