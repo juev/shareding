@@ -11,6 +11,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.AppDatabase
+import org.evsyukov.shareding.data.Bookmark
+import org.evsyukov.shareding.data.ClipboardOfferStore
 import org.evsyukov.shareding.data.SettingsStore
 import org.evsyukov.shareding.network.LinkdingApi
 import org.evsyukov.shareding.network.NetworkSelector
@@ -65,6 +67,7 @@ class AppContainer(application: Application) {
     val networkSelector = NetworkSelector(networkTracker, api, pageFetcher)
     val scheduler = SyncScheduler(application) { settings.state.value.canSync }
     val notifier = SyncNotifier(application)
+    val clipboardOffers = ClipboardOfferStore(application)
 
     suspend fun deleteQueuedBookmark(id: Long) {
         db.bookmarks().delete(id)
@@ -81,6 +84,12 @@ class AppContainer(application: Application) {
         val blocked = SyncProblem.blocking(settings.state.value)
         if (blocked == null) scheduler.requestSync() else notifier.remind(blocked)
         return blocked
+    }
+
+    /** Saves a link to the queue as Share does and returns the confirmation to show. */
+    suspend fun queueLink(bookmark: Bookmark): String {
+        val id = withContext(Dispatchers.IO) { db.bookmarks().insert(bookmark) }
+        return SyncProblem.savedMessage(id != -1L, linkSaved())
     }
 
     /** Sync now and Retry ask for another attempt, so a stopped sync starts again. */
