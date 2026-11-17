@@ -27,6 +27,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
 import androidx.work.WorkManager
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -55,7 +56,8 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class QueueUiTest {
     @get:Rule(order = 0) val notificationPermission = NotificationPermissionRule()
-    @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 1) val emptyClipboard = EmptyClipboardRule()
+    @get:Rule(order = 2) val compose = createAndroidComposeRule<MainActivity>()
 
     @Before fun startWithoutServer() {
         val store = (compose.activity.application as ShareDingApplication).container.settings
@@ -258,8 +260,9 @@ class QueueUiTest {
 
     @Test fun pasteButtonFillsUrlFromClipboard() {
         clearQueue()
-        setClipboard("see https://example.com/pasted?utm_source=x&id=7 thanks")
         compose.onNodeWithText("Add bookmark").performClick()
+        // Copied after the form opens: a link copied while Queue is in front is offered (R34).
+        setClipboard("see https://example.com/pasted?utm_source=x&id=7 thanks")
         compose.onNodeWithContentDescription("Paste link").performClick()
         compose.onNode(hasText("https://example.com/pasted?id=7")).assertIsDisplayed()
     }
@@ -271,6 +274,97 @@ class QueueUiTest {
         compose.onNodeWithText("URL").performTextInput("https://example.com/typed")
         compose.onNodeWithContentDescription("Paste link").performClick()
         compose.onNode(hasText("https://example.com/typed")).assertIsDisplayed()
+    }
+
+    /** Sends the app to the background and back, as when the user returns from another app. */
+    private fun reopen() {
+        compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+    }
+
+    /** Waits until the main screen has had window focus long enough to check the clipboard. */
+    private fun awaitClipboardCheck() {
+        compose.waitUntil(5_000) { compose.activity.hasWindowFocus() }
+        compose.waitForIdle()
+    }
+
+    private fun awaitOffer(url: String) {
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasText("Send copied link?")).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(url).assertIsDisplayed()
+    }
+
+    private fun queuedUrls(): List<String> {
+        val app = compose.activity.application as ShareDingApplication
+        return runBlocking { app.container.db.bookmarks().batch(100).map { it.url } }
+    }
+
+    @Test fun clipboardLinkIsOfferedAndQueuedWithoutAddForm() {
+        clearQueue()
+        setClipboard("see https://example.com/b?utm_source=x&id=7 thanks")
+        reopen()
+        awaitOffer("https://example.com/b?id=7")
+        compose.onNodeWithText("Send").performClick()
+        compose.waitUntil(5_000) { queuedUrls().isNotEmpty() }
+        assertEquals(listOf("https://example.com/b?id=7"), queuedUrls())
+        compose.onNodeWithText("Send copied link?").assertDoesNotExist()
+        compose.onNodeWithText("Add Bookmark").assertDoesNotExist()
+        // A sent link is not offered again, even after it leaves the queue.
+        clearQueue()
+        reopen()
+        awaitClipboardCheck()
+        compose.onNodeWithText("Send copied link?").assertDoesNotExist()
+    }
+
+    @Test fun dismissedClipboardLinkIsNotOfferedAgainButANewOneIs() {
+        clearQueue()
+        setClipboard("https://example.com/a")
+        reopen()
+        awaitOffer("https://example.com/a")
+        compose.onNodeWithText("Not now").performClick()
+        compose.onNodeWithText("Send copied link?").assertDoesNotExist()
+        assertEquals(emptyList<String>(), queuedUrls())
+        reopen()
+        awaitClipboardCheck()
+        compose.onNodeWithText("Send copied link?").assertDoesNotExist()
+        setClipboard("https://example.com/other")
+        reopen()
+        awaitOffer("https://example.com/other")
+    }
+
+    @Test fun queuedClipboardLinkIsNotOffered() {
+        val app = compose.activity.application as ShareDingApplication
+        val url = "https://example.com/queued"
+        clearQueue()
+        runBlocking { app.container.db.bookmarks().insert(Bookmark(url = url)) }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(url)).fetchSemanticsNodes().isNotEmpty() }
+        setClipboard(url)
+        reopen()
+        awaitClipboardCheck()
+        compose.onNodeWithText("Send copied link?").assertDoesNotExist()
+        assertEquals(listOf(url), queuedUrls())
+    }
+
+    @Test fun clipboardWithoutHttpLinkIsNotOffered() {
+        clearQueue()
+        for (text in listOf("no link here", "ftp://example.com/a")) {
+            setClipboard(text)
+            reopen()
+            awaitClipboardCheck()
+            compose.onNodeWithText("Send copied link?").assertDoesNotExist()
+        }
+    }
+
+    @Test fun clipboardIsCheckedOnlyWhileQueueIsShown() {
+        clearQueue()
+        compose.onNodeWithText("Settings").performClick()
+        setClipboard("https://example.com/later")
+        reopen()
+        awaitClipboardCheck()
+        compose.onNodeWithText("Send copied link?").assertDoesNotExist()
+        compose.onNodeWithText("Queue").performClick()
+        awaitOffer("https://example.com/later")
     }
 
     @Test fun failedBookmarkShowsRetryAndPendingBookmarkDoesNot() {

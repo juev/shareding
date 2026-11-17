@@ -19,7 +19,6 @@ import kotlinx.coroutines.withContext
 import org.evsyukov.shareding.data.Bookmark
 import org.evsyukov.shareding.network.BookmarkTitles
 import org.evsyukov.shareding.network.Urls
-import org.evsyukov.shareding.sync.SyncProblem
 
 /** The link and title an app passes with `ACTION_SEND`. */
 internal data class SharedLink(val url: String, val title: String) {
@@ -75,10 +74,7 @@ class ShareActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             val message = try {
-                val id = withContext(Dispatchers.IO) {
-                    container.db.bookmarks().insert(Bookmark(url = url, title = title))
-                }
-                val message = SyncProblem.savedMessage(id != -1L, container.linkSaved())
+                val message = container.queueLink(Bookmark(url = url, title = title))
                 withContext(Dispatchers.IO) {
                     try {
                         DirectShare.publish(applicationContext)

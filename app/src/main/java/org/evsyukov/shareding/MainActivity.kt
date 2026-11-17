@@ -90,12 +90,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.lifecycleScope
 import androidx.work.WorkInfo
 import java.text.DateFormat
@@ -165,7 +168,10 @@ private fun Modifier.contentWidth(): Modifier = widthIn(max = 640.dp).fillMaxWid
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ShareDingScreen(container: AppContainer) {
-    val bookmarks by container.db.bookmarks().observeAll().collectAsState(initial = emptyList())
+    // Null until Room answers, so the clipboard offer cannot mistake a loading queue for an empty one.
+    val queue by container.db.bookmarks().observeAll()
+        .collectAsState<List<Bookmark>, List<Bookmark>?>(initial = null)
+    val bookmarks = queue.orEmpty()
     val settings by container.settings.state.collectAsState()
     val workInfos by container.scheduler.workInfos.collectAsState(initial = emptyList())
     var selectedTab by rememberSaveable { mutableStateOf(0) }
@@ -192,14 +198,30 @@ private fun ShareDingScreen(container: AppContainer) {
         }
     }
 
+    // Ask once, on first launch: a sync error in the background cannot show the dialog itself.
+    var askingPermission by remember { mutableStateOf(container.notifier.shouldRequestPermission()) }
     val notificationPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()) { }
+        ActivityResultContracts.RequestPermission()) { askingPermission = false }
     LaunchedEffect(Unit) {
-        // Ask once, on first launch: a sync error in the background cannot show the dialog itself.
-        if (container.notifier.shouldRequestPermission()) {
+        if (askingPermission) {
             container.notifier.markPermissionRequested()
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    // Offer a copied link once per visit to Queue. Android 10+ hides the clipboard from an app
+    // without input focus, so the read waits for window focus rather than for onStart.
+    var offeredUrl by rememberSaveable { mutableStateOf<String?>(null) }
+    var clipboardChecked by remember { mutableStateOf(false) }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { clipboardChecked = false }
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(windowFocused, clipboardChecked, askingPermission, selectedTab, showAdd, queue != null) {
+        val queued = queue
+        if (!windowFocused || clipboardChecked || askingPermission || selectedTab != 0 || showAdd ||
+            queued == null) return@LaunchedEffect
+        clipboardChecked = true
+        val url = clipboardUrl(context) ?: return@LaunchedEffect
+        if (container.clipboardOffers.isNew(url) && queued.none { it.url == url }) offeredUrl = url
     }
 
     LaunchedEffect(settings.serverUrl, settings.hasToken, selectedTab, showAdd, tagRefresh) {
@@ -288,6 +310,28 @@ private fun ShareDingScreen(container: AppContainer) {
                     deleteTarget = null
                 }) { Text("Delete") }
             }, dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } })
+    }
+    offeredUrl?.let { url ->
+        val dismiss = {
+            container.clipboardOffers.handled(url)
+            offeredUrl = null
+        }
+        AlertDialog(onDismissRequest = dismiss, title = { Text("Send copied link?") },
+            text = { Text(url) }, confirmButton = {
+                TextButton(onClick = {
+                    dismiss()
+                    scope.launch {
+                        val message = try {
+                            container.queueLink(Bookmark(url = url))
+                        } catch (cancel: CancellationException) {
+                            throw cancel
+                        } catch (error: Exception) {
+                            "Cannot save: ${error.message ?: "unknown error"}"
+                        }
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    }
+                }) { Text("Send") }
+            }, dismissButton = { TextButton(onClick = dismiss) { Text("Not now") } })
     }
 }
 
@@ -437,7 +481,10 @@ private fun QueueScreen(bookmarks: List<Bookmark>, padding: PaddingValues,
 
 /** Reads the clipboard only when called; returns its first HTTP(S) link. */
 private fun clipboardUrl(context: Context): String? {
-    val clip = context.getSystemService(ClipboardManager::class.java)?.primaryClip ?: return null
+    val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return null
+    // The description is readable without Android 12's clipboard-access notice; a non-text clip holds no link.
+    if (clipboard.primaryClipDescription?.hasMimeType("text/*") != true) return null
+    val clip = clipboard.primaryClip ?: return null
     return (0 until clip.itemCount).firstNotNullOfOrNull { index ->
         Urls.sharedText(clip.getItemAt(index).coerceToText(context).toString())
     }
