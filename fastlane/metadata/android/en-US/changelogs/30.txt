@@ -1,0 +1,1 @@
+Open ShareDing with a link on the clipboard and Queue offers to send it right away, without the Add Bookmark form. Each copied link is offered once, and links already in the queue are skipped.
