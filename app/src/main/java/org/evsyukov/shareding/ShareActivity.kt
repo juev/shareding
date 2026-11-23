@@ -59,27 +59,35 @@ internal object DirectShare {
     }
 }
 
-/** A translucent Share target that leaves the sending app visible until the local save completes. */
+/** A translucent link target that leaves the source app visible until the local save completes. */
 class ShareActivity : ComponentActivity() {
     private val container get() = (application as ShareDingApplication).container
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val shared = SharedLink.from(intent)
-        if (shared == null) {
+        val fromShare = intent.action == Intent.ACTION_SEND
+        val bookmark = when (intent.action) {
+            Intent.ACTION_SEND -> SharedLink.from(intent)?.let { Bookmark(url = it.url, title = it.title) }
+            Intent.ACTION_VIEW -> intent.dataString
+                ?.let { runCatching { Urls.bookmark(it) }.getOrNull() }
+                ?.let { Bookmark(url = it) }
+            else -> null
+        }
+        if (bookmark == null) {
             showResult(SharedLink.INVALID)
             return
         }
-        val (url, title) = shared
 
         lifecycleScope.launch {
             val message = try {
-                val message = container.queueLink(Bookmark(url = url, title = title))
-                withContext(Dispatchers.IO) {
-                    try {
-                        DirectShare.publish(applicationContext)
-                    } catch (error: Exception) {
-                        Log.e("ShareDing", "Could not publish the Direct Share target", error)
+                val message = container.queueLink(bookmark)
+                if (fromShare) {
+                    withContext(Dispatchers.IO) {
+                        try {
+                            DirectShare.publish(applicationContext)
+                        } catch (error: Exception) {
+                            Log.e("ShareDing", "Could not publish the Direct Share target", error)
+                        }
                     }
                 }
                 message
